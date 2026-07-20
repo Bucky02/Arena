@@ -1,0 +1,49 @@
+import 'package:flutter/material.dart';
+import 'package:app_campi/core/theme/app_theme.dart';
+
+class TelefonoFormWidget extends StatelessWidget {
+  final TextEditingController controller;
+  final FocusNode? focusNode;
+  final String label;
+
+  const TelefonoFormWidget({
+    super.key,
+    required this.controller,
+    this.focusNode,
+    this.label = 'Cellulare *',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: controller,
+      focusNode: focusNode,
+      keyboardType: TextInputType.phone,
+      maxLength: 10,
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(
+        labelText: label,
+        counterText: '',
+        labelStyle: TextStyle(color: Colors.grey.shade400),
+        prefixIcon: const Icon(Icons.phone_android, color: AppTheme.neonOrange),
+        filled: true,
+        fillColor: AppTheme.cardBg,
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide(color: Colors.grey.shade700, width: 1),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: const BorderSide(color: AppTheme.neonOrange, width: 2),
+        ),
+      ),
+      validator: (val) {
+        if (val == null || val.trim().isEmpty) return 'Inserisci il numero';
+        if (!RegExp(r'^\d{10}$').hasMatch(val.trim())) {
+          return 'Inserisci esattamente 10 cifre';
+        }
+        return null;
+      },
+    );
+  }
+}

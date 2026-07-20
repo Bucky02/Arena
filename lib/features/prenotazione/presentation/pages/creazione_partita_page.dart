@@ -1,0 +1,1313 @@
+import 'dart:ui';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:app_campi/features/auth/application/auth_provider.dart';
+import 'package:app_campi/features/prenotazione/application/creazione_partita_controller.dart';
+import 'package:app_campi/features/prenotazione/application/creazione_partita_state.dart';
+import 'package:app_campi/core/theme/app_theme.dart';
+import 'package:app_campi/features/prenotazione/presentation/pages/successo_prenotazione_page.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:app_campi/core/services/partita_service.dart';
+import 'package:app_campi/features/esplora_match/presentation/pages/esplora_match_page.dart';
+import 'package:app_campi/features/miei_match/application/partite_utente_provider.dart';
+
+class CreazionePartitaPage extends ConsumerWidget {
+  const CreazionePartitaPage({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(creazionePartitaProvider);
+    final controller = ref.read(creazionePartitaProvider.notifier);
+
+    if (state.campoSelezionato == null) {
+      return const Scaffold(backgroundColor: AppTheme.darkBg);
+    }
+
+    return Scaffold(
+      backgroundColor: AppTheme.darkBg,
+      extendBodyBehindAppBar: true,
+      bottomNavigationBar: const _BuildStickyBottomBar(),
+      body: Stack(
+        children: [
+          Positioned(
+            top: -100,
+            left: -50,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppTheme.accent.withOpacity(0.05),
+              ),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 90, sigmaY: 90),
+                child: Container(color: Colors.transparent),
+              ),
+            ),
+          ),
+
+          SafeArea(
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(
+                    left: 8,
+                    right: 20,
+                    top: 12,
+                    bottom: 8,
+                  ),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(
+                          Icons.arrow_back_ios_new_rounded,
+                          color: AppTheme.textPrimary,
+                          size: 20,
+                        ),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        "CONFIGURA ORARIO",
+                        style: TextStyle(
+                          color: AppTheme.textSecondary.withOpacity(0.8),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 2.0,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: _BuildFaseConfigurazione(
+                    state: state,
+                    controller: controller,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BuildFaseConfigurazione extends StatelessWidget {
+  final CreazionePartitaState state;
+  final CreazionePartitaController controller;
+
+  const _BuildFaseConfigurazione({
+    required this.state,
+    required this.controller,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      children: [
+        _RiepilogoCampoCard(state: state, controller: controller),
+        const SizedBox(height: 32),
+        _SelettoreData(state: state, controller: controller),
+        const SizedBox(height: 32),
+        _SelettoreOrario(state: state, controller: controller),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeInOut,
+          child:
+              (state.oraInizioSelezionata != null &&
+                  (state.partiteApertePerSlot[state.oraInizioSelezionata] ??
+                          0) >
+                      0)
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: _SlotCompetitionBanner(
+                    partiteAperte:
+                        state.partiteApertePerSlot[state.oraInizioSelezionata]!,
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+        const SizedBox(height: 32),
+        _SelettoreModalitaGioco(state: state, controller: controller),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          child: !state.isPartitaPrivata
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 32),
+                  child: _SelettorePartecipanti(
+                    state: state,
+                    controller: controller,
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 300),
+          child: state.oraInizioSelezionata != null
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 24),
+                  child: _BannerInformativo(
+                    statoInfo: controller.getInfoStatoPartita(),
+                    colore:
+                        controller.getColoreStato() ==
+                                const Color(0xFF00E5FF) ||
+                            controller.getColoreStato() ==
+                                const Color(0xFF9457EB) ||
+                            controller.getColoreStato() == AppTheme.neonGreen
+                        ? AppTheme.accent
+                        : controller.getColoreStato(),
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+        const SizedBox(height: 40),
+      ],
+    );
+  }
+}
+
+class _RiepilogoCampoCard extends StatelessWidget {
+  final CreazionePartitaState state;
+  final CreazionePartitaController controller;
+
+  const _RiepilogoCampoCard({required this.state, required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final campo = state.campoSelezionato!;
+    final hasFoto = campo.fotoUrl != null && campo.fotoUrl!.isNotEmpty;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.cardBg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.cardBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              color: AppTheme.darkBg,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: hasFoto
+                  ? CachedNetworkImage(
+                      imageUrl: campo.fotoUrl!,
+                      fit: BoxFit.cover,
+                    )
+                  : const Icon(
+                      Icons.sports_soccer,
+                      color: AppTheme.accent,
+                      size: 30,
+                    ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "STAI PRENOTANDO",
+                  style: TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 10,
+                    letterSpacing: 1.5,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  campo.nomeCampo,
+                  style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: () {
+              Navigator.pop(context);
+              controller.selezionaCampo(null);
+            },
+            icon: const Icon(
+              Icons.edit_square,
+              color: AppTheme.textSecondary,
+              size: 20,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SelettoreData extends StatelessWidget {
+  final CreazionePartitaState state;
+  final CreazionePartitaController controller;
+
+  const _SelettoreData({required this.state, required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          "QUANDO VUOI GIOCARE?",
+          style: TextStyle(
+            color: AppTheme.textPrimary,
+            fontWeight: FontWeight.w900,
+            fontSize: 14,
+          ),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          height: 85,
+          child: ListView.builder(
+            physics: const BouncingScrollPhysics(),
+            scrollDirection: Axis.horizontal,
+            itemCount: 14,
+            itemBuilder: (context, index) {
+              final dataCorrente = DateTime.now().add(Duration(days: index));
+              final isSelected = DateUtils.isSameDay(
+                state.dataSelezionata,
+                dataCorrente,
+              );
+              final bool isChiuso = state.giorniChiusi.any(
+                (d) => DateUtils.isSameDay(d, dataCorrente),
+              );
+
+              return GestureDetector(
+                onTap: isChiuso
+                    ? null
+                    : () => controller.caricaOrari(dataCorrente),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 70,
+                  margin: const EdgeInsets.only(right: 12),
+                  decoration: BoxDecoration(
+                    color: isChiuso
+                        ? Colors.white.withOpacity(0.02)
+                        : (isSelected
+                              ? AppTheme.accent.withOpacity(0.12)
+                              : AppTheme.cardBg),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isChiuso
+                          ? AppTheme.statoErrore.withOpacity(0.2)
+                          : (isSelected
+                                ? AppTheme.accent
+                                : AppTheme.cardBorder),
+                      width: isSelected ? 1.5 : 1,
+                    ),
+                  ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            _getGiornoSettimana(dataCorrente.weekday),
+                            style: TextStyle(
+                              color: isChiuso
+                                  ? Colors.white24
+                                  : (isSelected
+                                        ? AppTheme.accent
+                                        : AppTheme.textSecondary),
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            "${dataCorrente.day}",
+                            style: TextStyle(
+                              color: isChiuso
+                                  ? Colors.white24
+                                  : (isSelected
+                                        ? AppTheme.textPrimary
+                                        : AppTheme.textPrimary),
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (isChiuso)
+                        Container(
+                          decoration: BoxDecoration(
+                            color: AppTheme.darkBg.withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          child: Center(
+                            child: Icon(
+                              Icons.close_rounded,
+                              color: AppTheme.statoErrore.withOpacity(0.7),
+                              size: 40,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _getGiornoSettimana(int weekday) {
+    const giorni = ["LUN", "MAR", "MER", "GIO", "VEN", "SAB", "DOM"];
+    return giorni[weekday - 1];
+  }
+}
+
+class _SelettoreOrario extends StatelessWidget {
+  final CreazionePartitaState state;
+  final CreazionePartitaController controller;
+
+  const _SelettoreOrario({required this.state, required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          "SELEZIONA L'ORARIO",
+          style: TextStyle(
+            color: AppTheme.textPrimary,
+            fontWeight: FontWeight.w900,
+            fontSize: 14,
+          ),
+        ),
+        const SizedBox(height: 16),
+        if (state.isLoading)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(20.0),
+              child: CircularProgressIndicator(color: AppTheme.accent),
+            ),
+          )
+        else if (state.orariDisponibili.isEmpty)
+          Center(
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                "Nessun orario disponibile in questa data.",
+                style: TextStyle(color: AppTheme.textSecondary),
+              ),
+            ),
+          )
+        else
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: state.orariDisponibili.map((ora) {
+              final isSelected = state.oraInizioSelezionata == ora;
+              final isChiusura = state.orariChiusi.contains(ora);
+              final isOccupato = state.orariOccupati.contains(ora);
+              final isBloccato = isChiusura || isOccupato;
+              final aperte = state.partiteApertePerSlot[ora] ?? 0;
+              final hasCompetizione = !isBloccato && aperte > 0;
+
+              return Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: isBloccato
+                      ? null
+                      : () => controller.aggiornaOrario(ora),
+                  borderRadius: BorderRadius.circular(14),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 90,
+                    height: 65,
+                    decoration: BoxDecoration(
+                      color: isBloccato
+                          ? Colors.white.withOpacity(0.02)
+                          : (isSelected
+                                ? AppTheme.accent.withOpacity(0.12)
+                                : (hasCompetizione
+                                      ? AppTheme.statoAttenzione.withOpacity(
+                                          0.05,
+                                        )
+                                      : AppTheme.cardBg)),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: isBloccato
+                            ? Colors.white.withOpacity(0.05)
+                            : (isSelected
+                                  ? AppTheme.accent
+                                  : (hasCompetizione
+                                        ? AppTheme.statoAttenzione.withOpacity(
+                                            0.5,
+                                          )
+                                        : AppTheme.cardBorder)),
+                        width: isSelected ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              ora,
+                              style: TextStyle(
+                                color: isBloccato
+                                    ? Colors.white30
+                                    : (isSelected
+                                          ? AppTheme.accent
+                                          : AppTheme.textPrimary),
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            if (!isBloccato) ...[
+                              const SizedBox(height: 4),
+                              if (hasCompetizione)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? AppTheme.accent.withOpacity(0.2)
+                                        : AppTheme.statoAttenzione.withOpacity(
+                                            0.15,
+                                          ),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.bolt,
+                                        size: 10,
+                                        color: isSelected
+                                            ? AppTheme.accent
+                                            : AppTheme.statoAttenzione,
+                                      ),
+                                      const SizedBox(width: 2),
+                                      Text(
+                                        "$aperte",
+                                        style: TextStyle(
+                                          color: isSelected
+                                              ? AppTheme.accent
+                                              : AppTheme.statoAttenzione,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              else
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: List.generate(
+                                    3,
+                                    (i) => Container(
+                                      width: 6,
+                                      height: 3,
+                                      margin: const EdgeInsets.symmetric(
+                                        horizontal: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: isSelected
+                                            ? AppTheme.accent.withOpacity(0.5)
+                                            : Colors.white24,
+                                        borderRadius: BorderRadius.circular(2),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ],
+                        ),
+                        if (isBloccato)
+                          Container(
+                            decoration: BoxDecoration(
+                              color: AppTheme.darkBg.withOpacity(0.6),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Center(
+                              child: Icon(
+                                isChiusura
+                                    ? Icons.close_rounded
+                                    : Icons.lock_rounded,
+                                color: isChiusura
+                                    ? AppTheme.statoErrore.withOpacity(0.8)
+                                    : AppTheme.statoAttenzione.withOpacity(0.8),
+                                size: 24,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        if (!state.isLoading && state.orariDisponibili.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          const _LegendaSlot(),
+        ],
+      ],
+    );
+  }
+}
+
+class _SelettoreModalitaGioco extends StatelessWidget {
+  final CreazionePartitaState state;
+  final CreazionePartitaController controller;
+
+  const _SelettoreModalitaGioco({
+    required this.state,
+    required this.controller,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          "SELEZIONA MODALITÀ",
+          style: TextStyle(
+            color: AppTheme.textPrimary,
+            fontWeight: FontWeight.w900,
+            fontSize: 14,
+          ),
+        ),
+        const SizedBox(height: 16),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: _ModalitaCard(
+                  titolo: "CAMPO\nINTERO",
+                  descrizione: "Prenota per il tuo gruppo",
+                  icona: Icons.stadium_outlined,
+                  isSelected: state.isPartitaPrivata,
+                  onTap: () => controller.aggiornaTipoPartita(true),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _ModalitaCard(
+                  titolo: "CERCA\nGIOCATORI",
+                  descrizione: "Apri un matchmaking",
+                  icona: Icons.people_alt_outlined,
+                  isSelected: !state.isPartitaPrivata,
+                  onTap: () => controller.aggiornaTipoPartita(false),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ModalitaCard extends StatelessWidget {
+  final String titolo;
+  final String descrizione;
+  final IconData icona;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _ModalitaCard({
+    required this.titolo,
+    required this.descrizione,
+    required this.icona,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppTheme.accent.withOpacity(0.12)
+              : AppTheme.cardBg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? AppTheme.accent : AppTheme.cardBorder,
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? AppTheme.accent
+                    : Colors.white.withOpacity(0.05),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icona,
+                color: isSelected ? AppTheme.darkBg : AppTheme.textSecondary,
+                size: 24,
+              ),
+            ),
+            const Spacer(),
+            const SizedBox(height: 16),
+            Text(
+              titolo,
+              style: TextStyle(
+                color: isSelected ? AppTheme.accent : AppTheme.textPrimary,
+                fontWeight: FontWeight.w900,
+                fontSize: 16,
+                height: 1.2,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              descrizione,
+              style: TextStyle(
+                color: isSelected
+                    ? AppTheme.textPrimary
+                    : AppTheme.textSecondary,
+                fontSize: 12,
+                height: 1.3,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SelettorePartecipanti extends StatelessWidget {
+  final CreazionePartitaState state;
+  final CreazionePartitaController controller;
+
+  const _SelettorePartecipanti({required this.state, required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final maxGiocatori = state.campoSelezionato?.numeroDiGiocatori ?? 0;
+    final int postiDisponibiliPerAmici = maxGiocatori - 1;
+    final int mancanti = maxGiocatori - (state.ospitiExtra + 1);
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppTheme.cardBg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                "QUANTI AMICI PORTI CON TE?",
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 14,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: AppTheme.darkBg,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.cardBorder),
+                ),
+                child: Text(
+                  "${state.ospitiExtra + 1} / $maxGiocatori",
+                  style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            mancanti > 0
+                ? "Indica se vieni con amici. Troveremo noi i restanti $mancanti giocatori."
+                : "Hai occupato tutti i posti. Il match diventerà un Campo Intero (Completo).",
+            style: TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 13,
+              height: 1.4,
+              fontWeight: mancanti == 0 ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildPulsanteRotondo(
+                icona: Icons.remove,
+                attivo: state.ospitiExtra > 0,
+                onTap: () => controller.aggiornaOspiti(state.ospitiExtra - 1),
+              ),
+              const SizedBox(width: 32),
+              SizedBox(
+                width: 50,
+                child: Text(
+                  "${state.ospitiExtra}",
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 34,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 32),
+              _buildPulsanteRotondo(
+                icona: Icons.add,
+                attivo: state.ospitiExtra < postiDisponibiliPerAmici,
+                onTap: () => controller.aggiornaOspiti(state.ospitiExtra + 1),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPulsanteRotondo({
+    required IconData icona,
+    required bool attivo,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: attivo ? onTap : null,
+        borderRadius: BorderRadius.circular(30),
+        child: Ink(
+          width: 50,
+          height: 50,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: attivo ? AppTheme.accent : Colors.white.withOpacity(0.05),
+          ),
+          child: Icon(
+            icona,
+            color: attivo ? AppTheme.darkBg : Colors.white24,
+            size: 28,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LegendaSlot extends StatelessWidget {
+  const _LegendaSlot();
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 16,
+      runSpacing: 10,
+      children: const [
+        _LegendaItem(
+          color: AppTheme.accent,
+          icon: Icons.check_circle_outline,
+          label: "Libero",
+        ),
+        _LegendaItem(
+          color: AppTheme.statoAttenzione,
+          icon: Icons.bolt,
+          label: "In gara",
+        ),
+        _LegendaItem(
+          color: AppTheme.statoAttenzione,
+          icon: Icons.lock_rounded,
+          label: "Occupato",
+        ),
+        _LegendaItem(
+          color: AppTheme.statoErrore,
+          icon: Icons.close_rounded,
+          label: "Chiuso",
+        ),
+      ],
+    );
+  }
+}
+
+class _LegendaItem extends StatelessWidget {
+  final Color color;
+  final IconData icon;
+  final String label;
+
+  const _LegendaItem({
+    required this.color,
+    required this.icon,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: TextStyle(
+            color: color,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SlotCompetitionBanner extends StatelessWidget {
+  final int partiteAperte;
+
+  const _SlotCompetitionBanner({required this.partiteAperte});
+
+  @override
+  Widget build(BuildContext context) {
+    final isMaxRaggiunto = partiteAperte >= PartitaService.maxPartiteNelloSlot;
+    final int rimanenti = PartitaService.maxPartiteNelloSlot - partiteAperte;
+
+    final String titolo = isMaxRaggiunto
+        ? "Limite match aperti raggiunto!"
+        : (partiteAperte == 1
+              ? "C'è già 1 gruppo in questo slot"
+              : "Ci sono già $partiteAperte gruppi in questo slot");
+    final String corpo = isMaxRaggiunto
+        ? "Non puoi aprire nuove ricerche giocatori qui. Puoi prenotare il CAMPO INTERO sovrascrivendo i gruppi esistenti, oppure unirti a uno di loro."
+        : (rimanenti > 0
+              ? "Puoi aprire la tua partita. Tieni presente che se un altro gruppo raggiunge il numero minimo prima di te, il campo andrà a loro."
+              : "Ultimo slot! Se un altro gruppo raggiunge il numero minimo prima di te, la tua partita verrà annullata.");
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppTheme.cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.statoAttenzione.withOpacity(0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppTheme.statoAttenzione.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.bolt,
+              color: AppTheme.statoAttenzione,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  titolo,
+                  style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  corpo,
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 12,
+                    height: 1.45,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: List.generate(
+                    PartitaService.maxPartiteNelloSlot,
+                    (i) => Expanded(
+                      child: Container(
+                        height: 5,
+                        margin: const EdgeInsets.only(right: 6),
+                        decoration: BoxDecoration(
+                          color: i < partiteAperte
+                              ? AppTheme.statoAttenzione
+                              : Colors.white12,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  "$partiteAperte su ${PartitaService.maxPartiteNelloSlot} slot occupati",
+                  style: const TextStyle(
+                    color: AppTheme.statoAttenzione,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const EsploraMatchPage(),
+                      ),
+                    ),
+                    icon: const Icon(Icons.search, size: 18),
+                    label: const Text("Esplora Match Esistenti"),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BannerInformativo extends StatelessWidget {
+  final String statoInfo;
+  final Color colore;
+
+  const _BannerInformativo({required this.statoInfo, required this.colore});
+
+  String _getSpiegazioneStato(String stato) {
+    if (stato.contains("PRIVATA"))
+      return "Hai prenotato l'intero campo solo per il tuo gruppo. Nessun altro potrà unirsi.";
+    if (stato == "PARTITA AL COMPLETO")
+      return "Siete al completo! Il campo è vostro, esattamente come una prenotazione privata.";
+    if (stato == "PARTITA PROTETTA")
+      return "Slot bloccato. Hai una protezione temporanea per completare il team prima che altri possano scavalcarvi.";
+    if (stato == "PARTITA A RISCHIO")
+      return "Numero di giocatori minimo. Il vostro slot può essere scavalvato e rubato da un gruppo completo fino a 4 ore prima del match.";
+    return "Aggiungi altri ospiti per raggiungere il numero minimo e aprire il match.";
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppTheme.cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colore.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: colore.withOpacity(0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.info_outline, color: colore, size: 24),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  statoInfo,
+                  style: TextStyle(
+                    color: colore,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _getSpiegazioneStato(statoInfo),
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BuildStickyBottomBar extends ConsumerWidget {
+  const _BuildStickyBottomBar();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(creazionePartitaProvider);
+    final controller = ref.read(creazionePartitaProvider.notifier);
+
+    final maxGiocatori = state.campoSelezionato?.numeroDiGiocatori ?? 0;
+    final isVirtualmenteCompleta =
+        state.isPartitaPrivata || ((state.ospitiExtra + 1) >= maxGiocatori);
+    final int aperteNelloSlot = state.oraInizioSelezionata != null
+        ? (state.partiteApertePerSlot[state.oraInizioSelezionata] ?? 0)
+        : 0;
+    final bool isMaxAperteRaggiunto =
+        aperteNelloSlot >= PartitaService.maxPartiteNelloSlot;
+    final bool forzaUniscitiUI =
+        isMaxAperteRaggiunto && !isVirtualmenteCompleta;
+
+    final isValido =
+        controller.isNumeroGiocatoriValido() &&
+        state.oraInizioSelezionata != null &&
+        !forzaUniscitiUI;
+
+    String buttonText = "APRI MATCHMAKING";
+    IconData buttonIcon = Icons.check_circle_outline;
+    Color buttonColor = AppTheme.accent;
+
+    if (isVirtualmenteCompleta) {
+      buttonText = "PRENOTA CAMPO";
+    } else if (forzaUniscitiUI) {
+      buttonText = "UNISCITI A UN MATCH";
+      buttonIcon = Icons.group_add;
+    }
+
+    return Container(
+      padding: const EdgeInsets.only(top: 16, left: 20, right: 20, bottom: 32),
+      decoration: BoxDecoration(
+        color: AppTheme.darkBg,
+        border: const Border(top: BorderSide(color: AppTheme.cardBorder)),
+      ),
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          minimumSize: const Size(double.infinity, 60),
+          backgroundColor: isValido || forzaUniscitiUI
+              ? buttonColor
+              : AppTheme.cardBg,
+          foregroundColor: isValido || forzaUniscitiUI
+              ? AppTheme.darkBg
+              : Colors.white54,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          elevation: isValido || forzaUniscitiUI ? 8 : 0,
+        ),
+        onPressed: state.isLoading || (!isValido && !forzaUniscitiUI)
+            ? null
+            : () {
+                if (forzaUniscitiUI) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const EsploraMatchPage()),
+                  );
+                } else {
+                  _gestisciConferma(context, ref, state, controller);
+                }
+              },
+        child: state.isLoading
+            ? const SizedBox(
+                height: 24,
+                width: 24,
+                child: CircularProgressIndicator(
+                  color: AppTheme.darkBg,
+                  strokeWidth: 3,
+                ),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    buttonText,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 16,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(buttonIcon, size: 20),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Future<void> _gestisciConferma(
+    BuildContext context,
+    WidgetRef ref,
+    CreazionePartitaState state,
+    CreazionePartitaController controller,
+  ) async {
+    try {
+      final utente = ref.read(utenteCorrenteProvider).value;
+      if (utente == null) throw Exception('Utente non autenticato.');
+
+      final maxGiocatori = state.campoSelezionato!.numeroDiGiocatori;
+      final ospitiAttuali = state.ospitiExtra + 1;
+      final isPrivata = state.isPartitaPrivata;
+      final isCompleta = isPrivata || (ospitiAttuali >= maxGiocatori);
+
+      final nomeCampo = state.campoSelezionato!.nomeCampo;
+      final data = state.dataSelezionata;
+      final ora = state.oraInizioSelezionata!;
+
+      await controller.confermaMatch(utente);
+      await Future.delayed(const Duration(milliseconds: 600));
+
+      ref
+          .read(filtroPartitaProvider.notifier)
+          .impostaFiltro(
+            isCompleta ? FiltroPartita.complete : FiltroPartita.aperte,
+          );
+      ref.invalidate(partiteUtenteProvider(utente.id));
+
+      if (!context.mounted) return;
+
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SuccessoPrenotazionePage(
+            nomeCampo: nomeCampo,
+            data: data,
+            ora: ora,
+            isPrivata: isPrivata,
+          ),
+        ),
+        (route) => route.isFirst,
+      );
+
+      controller.svuotaTutto();
+    } catch (e) {
+      if (context.mounted) _gestioneErroriUI(context, e.toString());
+    }
+  }
+
+  void _gestioneErroriUI(BuildContext context, String erroreStr) {
+    String titolo = "Errore Generico";
+    String descrizione = erroreStr.replaceAll('Exception: ', '');
+    bool mostraBottoneEsplora = false;
+
+    if (erroreStr.contains('SLOT_OCCUPATO_PARTITA_PROTETTA')) {
+      titolo = "Slot Protetto";
+      descrizione =
+          "In questo orario c'è già una partita protetta. Non è possibile scavalcarli.";
+    } else if (erroreStr.contains('SLOT_GIA_OCCUPATO')) {
+      titolo = "Orario Occupato";
+      descrizione =
+          "Il campo è già stato prenotato per intero in questo orario.";
+    } else if (erroreStr.contains('UNISCITI_FORZATO')) {
+      titolo = "Ottimizza il campo!";
+      descrizione = descrizione.replaceAll(' UNISCITI_FORZATO', '');
+      mostraBottoneEsplora = true;
+    } else if (erroreStr.contains('MAX_PARTITE_RAGGIUNTE')) {
+      titolo = "Limite Raggiunto";
+      descrizione = descrizione.replaceAll(' MAX_PARTITE_RAGGIUNTE', '');
+      mostraBottoneEsplora = true;
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.cardBg,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          titolo,
+          style: const TextStyle(
+            color: AppTheme.textPrimary,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Text(
+          descrizione,
+          style: const TextStyle(color: AppTheme.textSecondary, height: 1.4),
+        ),
+        actions: [
+          if (mostraBottoneEsplora)
+            TextButton.icon(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const EsploraMatchPage()),
+                );
+              },
+              icon: const Icon(Icons.search, color: AppTheme.accent),
+              label: const Text(
+                "Esplora Match",
+                style: TextStyle(
+                  color: AppTheme.accent,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              "Chiudi",
+              style: TextStyle(
+                color: AppTheme.textSecondary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

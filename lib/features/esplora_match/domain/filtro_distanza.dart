@@ -1,0 +1,1 @@
+enum FiltroDistanza { vicini, estesa }

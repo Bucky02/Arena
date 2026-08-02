@@ -22,6 +22,7 @@ import 'package:app_campi/features/home/application/preferiti_provider.dart';
 import 'package:app_campi/features/notifiche/presentation/pages/notifiche_page.dart';
 import 'package:app_campi/features/notifiche/application/notifiche_provider.dart';
 import 'package:app_campi/features/notifiche/presentation/widget/notifiche_bell.dart';
+import 'package:app_campi/core/shared_widget/selezione_livello_dialog.dart';
 
 class HomeTab extends ConsumerWidget {
   final AsyncValue<Utente?> utenteAsyncValue;
@@ -242,11 +243,22 @@ class _PlayerDashboard extends ConsumerWidget {
                             if (isOspite) {
                               showAuthBottomSheet(context);
                             } else {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const RicercaCentriPage(),
-                                ),
+                              // 🔍 Controllo Livello
+                              verificaESelezionaLivello(
+                                context: context,
+                                userId: utenteLoggato!.id,
+                                livelliSportAttuali: utenteLoggato!
+                                    .livelliSport, // Assicurati di avere questo campo nel Model Utente
+                                sport: 'calcio', // Predisposto per il futuro
+                                onCompletato: () {
+                                  // Quando ha scelto (o se aveva già scelto), naviga normalmente!
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const RicercaCentriPage(),
+                                    ),
+                                  );
+                                },
                               );
                             }
                           },

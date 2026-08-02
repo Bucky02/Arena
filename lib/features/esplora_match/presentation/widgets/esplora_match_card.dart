@@ -7,6 +7,7 @@ import 'package:app_campi/core/shared_widget/animated_fill_bar.dart';
 import 'package:app_campi/features/home/presentation/widgets/date_time_row.dart';
 import '../../domain/partita_con_dati.dart';
 import 'join_match_bottom_sheet.dart';
+import 'package:app_campi/core/models/utente.dart';
 
 class EsploraMatchCard extends ConsumerWidget {
   final PartitaConDati item;
@@ -17,6 +18,18 @@ class EsploraMatchCard extends ConsumerWidget {
     required this.item,
     required this.giaIscritto,
   });
+
+  // 🟢 Helper per estrarre il livello dell'organizzatore per lo sport scelto (default 'calcio')
+  String _estraiLivelloOrganizzatore(
+    Utente organizzatore, {
+    String sport = 'calcio',
+  }) {
+    if (organizzatore.livelliSport != null &&
+        organizzatore.livelliSport!.containsKey(sport)) {
+      return organizzatore.livelliSport![sport].toString();
+    }
+    return "Non specificato";
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -36,6 +49,11 @@ class EsploraMatchCard extends ConsumerWidget {
     final String dataOra = formattaDataOra(
       partita.dataPartita,
       partita.orarioInizio,
+    );
+
+    // 🟢 Recupero livello organizzatore
+    final String livelloOrg = _estraiLivelloOrganizzatore(
+      partita.organizzatore,
     );
 
     return Container(
@@ -120,29 +138,80 @@ class EsploraMatchCard extends ConsumerWidget {
                   ),
                   const SizedBox(height: 6),
                   DateTimeRow(text: dataOra),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.person_outline_rounded,
-                        size: 14,
-                        color: AppTheme.textSecondary,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        partita.organizzatore.eta != null
-                            ? "Organizzato da ${partita.organizzatore.nomeCompleto} · ${partita.organizzatore.eta} anni"
-                            : "Organizzato da ${partita.organizzatore.nomeCompleto}",
-                        style: const TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
+                  const SizedBox(height: 12),
+
+                  // 🟢 NUOVO RIQUADRO ORGANIZZATORE BELLO E ORDINATO
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.04),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white.withOpacity(0.08)),
+                    ),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 18,
+                          backgroundColor: AppTheme.accent.withOpacity(0.2),
+                          child: Text(
+                            partita.organizzatore.nome[0].toUpperCase(),
+                            style: const TextStyle(
+                              color: AppTheme.accent,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Organizzato da: ${partita.organizzatore.nomeCompleto}",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  if (partita.organizzatore.eta != null) ...[
+                                    Text(
+                                      "Età: ${partita.organizzatore.eta} anni",
+                                      style: const TextStyle(
+                                        color: AppTheme.textSecondary,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                    const Text(
+                                      " • ",
+                                      style: TextStyle(
+                                        color: AppTheme.textSecondary,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                  Text(
+                                    "Livello: $livelloOrg",
+                                    style: const TextStyle(
+                                      color: AppTheme.accent,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+
                   const SizedBox(height: 16),
                   AnimatedFillBar(
                     label: "Posti occupati",

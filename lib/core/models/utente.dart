@@ -11,6 +11,9 @@ class Utente {
   final DateTime? createdAt;
   final Ruolo ruolo;
 
+  // 🟢 NUOVO CAMPO: Mappa per salvare i livelli dei vari sport (es. {'calcio': 'Intermedio'})
+  final Map<String, dynamic>? livelliSport;
+
   Utente({
     required this.id,
     required this.nome,
@@ -21,6 +24,7 @@ class Utente {
     this.indirizzo,
     this.createdAt,
     this.ruolo = Ruolo.giocatore,
+    this.livelliSport, // 🟢 Aggiunto al costruttore
   });
 
   bool get isGestore => ruolo == Ruolo.gestore;
@@ -62,6 +66,11 @@ class Utente {
         null => Ruolo.giocatore,
         _ => Ruolo.giocatore,
       },
+
+      // 🟢 Lettura da Supabase in modo sicuro
+      livelliSport: json['livelli_sport'] != null
+          ? Map<String, dynamic>.from(json['livelli_sport'] as Map)
+          : null,
     );
   }
 
@@ -77,6 +86,8 @@ class Utente {
       if (telefono != null) 'telefono': telefono,
       if (indirizzo != null) 'indirizzo': indirizzo,
       'tipo': ruolo == Ruolo.gestore ? 1 : 0,
+      if (livelliSport != null)
+        'livelli_sport': livelliSport, // 🟢 Aggiunto al salvataggio
     };
   }
 
@@ -88,6 +99,8 @@ class Utente {
         'data_nascita': dataNascita!.toIso8601String().split('T').first,
       if (telefono != null) 'telefono': telefono,
       if (indirizzo != null) 'indirizzo': indirizzo,
+      if (livelliSport != null)
+        'livelli_sport': livelliSport, // 🟢 Aggiunto all'update
     };
   }
 
@@ -99,6 +112,7 @@ class Utente {
     String? telefono,
     String? indirizzo,
     Ruolo? ruolo,
+    Map<String, dynamic>? livelliSport, // 🟢 Aggiunto al copyWith
   }) {
     return Utente(
       id: id,
@@ -110,13 +124,15 @@ class Utente {
       indirizzo: indirizzo ?? this.indirizzo,
       createdAt: createdAt,
       ruolo: ruolo ?? this.ruolo,
+      livelliSport: livelliSport ?? this.livelliSport, // 🟢
     );
   }
 
   String get nomeCompleto => '$nome $cognome';
 
   @override
-  String toString() => 'Utente(id: $id, nome: $nomeCompleto, ruolo: $ruolo)';
+  String toString() =>
+      'Utente(id: $id, nome: $nomeCompleto, ruolo: $ruolo, livelliSport: $livelliSport)';
 
   @override
   bool operator ==(Object other) =>

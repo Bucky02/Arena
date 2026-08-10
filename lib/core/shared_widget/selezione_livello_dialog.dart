@@ -17,7 +17,7 @@ final List<Map<String, String>> livelliDisponibili = [
   },
   {
     'titolo': 'Avanzato',
-    'descrizione': 'Ritmo alto, ottima tecnica e parlo la lingua del calcio.',
+    'descrizione': 'Ritmo alto, ottima tecnica e padronanza del gioco.',
   },
   {
     'titolo': 'Esperto / Agonista',
@@ -34,97 +34,151 @@ Future<void> verificaESelezionaLivello({
 }) async {
   Map<String, dynamic> mappaLivelli = Map.from(livelliSportAttuali ?? {});
 
-  // Se l'utente ha GIÀ impostato il livello per questo sport, proseguiamo subito!
+  // Se ha già impostato il livello, proseguiamo direttamente
   if (mappaLivelli.containsKey(sport) && mappaLivelli[sport] != null) {
     onCompletato();
     return;
   }
 
-  // Se NON lo ha impostato, mostriamo il Dialog elegante
-  showDialog(
+  // Mostra il Bottom Sheet che scivola dal basso
+  showModalBottomSheet(
     context: context,
-    barrierDismissible: false,
-    builder: (BuildContext dialogContext) {
-      return AlertDialog(
-        backgroundColor: AppTheme.cardBg,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Column(
-          children: [
-            const Icon(Icons.sports_soccer, color: AppTheme.accent, size: 36),
-            const SizedBox(height: 10),
-            Text(
-              "Qual è il tuo livello a ${sport.toUpperCase()}?",
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 5),
-            const Text(
-              "Lo chiederemo solo questa volta per bilanciare i match in zona.",
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-            ),
-          ],
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (BuildContext sheetContext) {
+      return Container(
+        decoration: const BoxDecoration(
+          color: AppTheme.cardBg,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
         ),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.separated(
-            shrinkWrap: true,
-            itemCount: livelliDisponibili.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (context, index) {
-              final item = livelliDisponibili[index];
-              return InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () async {
-                  Navigator.pop(dialogContext); // Chiudi popup
-
-                  // Aggiorna la mappa (pronto per aggiungere Padel/Tennis in futuro)
-                  mappaLivelli[sport] = item['titolo'];
-
-                  // Salva su Supabase
-                  await Supabase.instance.client
-                      .from('utenti')
-                      .update({'livelli_sport': mappaLivelli})
-                      .eq('id', userId);
-
-                  // Procedi con l'azione (es. naviga alla ricerca centri)
-                  onCompletato();
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white.withOpacity(0.1)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item['titolo']!,
-                        style: const TextStyle(
-                          color: AppTheme.accent,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        item['descrizione']!,
-                        style: const TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // "Pillola" di trascinamento in stile iOS/Modern UI
+              Container(
+                width: 38,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(2),
                 ),
-              );
-            },
+              ),
+
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.accent.withOpacity(0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.sports_soccer,
+                      color: AppTheme.accent,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "Seleziona livello (${sport.toUpperCase()})",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        const Text(
+                          "Serve per bilanciare i match in zona.",
+                          style: TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // Lista livelli
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: livelliDisponibili.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final item = livelliDisponibili[index];
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () async {
+                        Navigator.pop(sheetContext); // Chiude il Bottom Sheet
+
+                        mappaLivelli[sport] = item['titolo'];
+
+                        // Aggiornamento su Supabase
+                        await Supabase.instance.client
+                            .from('utenti')
+                            .update({'livelli_sport': mappaLivelli})
+                            .eq('id', userId);
+
+                        onCompletato();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.04),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.08),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item['titolo']!,
+                                    style: const TextStyle(
+                                      color: AppTheme.accent,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    item['descrizione']!,
+                                    style: const TextStyle(
+                                      color: AppTheme.textSecondary,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Icon(
+                              Icons.chevron_right_rounded,
+                              color: AppTheme.textSecondary,
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
         ),
       );

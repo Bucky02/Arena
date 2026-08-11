@@ -21,6 +21,7 @@ class DashboardState {
   final double startHour;
   final double endHour;
   final bool isCentroAttivo;
+  final bool giornoChiuso;
 
   const DashboardState({
     this.campi = const [],
@@ -36,6 +37,7 @@ class DashboardState {
     this.startHour = 8.0,
     this.endHour = 24.0,
     this.isCentroAttivo = true,
+    this.giornoChiuso = false,
   });
 
   DashboardState copyWith({
@@ -53,6 +55,7 @@ class DashboardState {
     double? startHour,
     double? endHour,
     bool? isCentroAttivo,
+    bool? giornoChiuso,
   }) {
     return DashboardState(
       campi: campi ?? this.campi,
@@ -72,6 +75,7 @@ class DashboardState {
       startHour: startHour ?? this.startHour,
       endHour: endHour ?? this.endHour,
       isCentroAttivo: isCentroAttivo ?? this.isCentroAttivo,
+      giornoChiuso: giornoChiuso ?? this.giornoChiuso,
     );
   }
 }
@@ -190,7 +194,7 @@ class DashboardNotifier extends Notifier<DashboardState> {
           clearIdCampo: clearIdCampo,
         );
 
-        _calcolaOrariGriglia();
+        _calcolaOrariGriglia(DateTime.now());
         filtraEConvertiDatiCalendario();
       }
     } catch (e) {
@@ -200,37 +204,79 @@ class DashboardNotifier extends Notifier<DashboardState> {
     }
   }
 
-  void _calcolaOrariGriglia() {
-    if (state.orariSocieta.isEmpty) return;
-    double minH = 24.0;
-    double maxH = 0.0;
+  void _calcolaOrariGriglia(DateTime giorno) {
+    if (state.orariSocieta.isEmpty) {
+      state = state.copyWith(startHour: 8.0, endHour: 24.0, giornoChiuso: true);
+      return;
+    }
 
-    for (var o in state.orariSocieta) {
-      if (o['is_chiuso'] == true) continue;
-      final apStr = o['orario_apertura']?.toString() ?? '08:00:00';
-      final chStr = o['orario_chiusura']?.toString() ?? '23:00:00';
-      final hAp = double.tryParse(apStr.split(':')[0]) ?? 8.0;
-      if (hAp < minH) minH = hAp;
-      final hCh = double.tryParse(chStr.split(':')[0]) ?? 23.0;
-      final mCh = double.tryParse(chStr.split(':')[1]) ?? 0.0;
-      double endCh = hCh + (mCh > 0 ? 1.0 : 0.0);
-      if (endCh > maxH) maxH = endCh;
+    final int giornoSettimana = giorno.weekday;
 
-      final ap2Str = o['orario_apertura_2']?.toString();
-      final ch2Str = o['orario_chiusura_2']?.toString();
-      if (ap2Str != null && ch2Str != null) {
-        final hAp2 = double.tryParse(ap2Str.split(':')[0]) ?? hAp;
-        if (hAp2 < minH) minH = hAp2;
-        final hCh2 = double.tryParse(ch2Str.split(':')[0]) ?? hCh;
-        final mCh2 = double.tryParse(ch2Str.split(':')[1]) ?? 0.0;
-        double endCh2 = hCh2 + (mCh2 > 0 ? 1.0 : 0.0);
-        if (endCh2 > maxH) maxH = endCh2;
+    final Map<String, dynamic> orarioGiorno = state.orariSocieta.firstWhere(
+      (o) => o['giorno_settimana'] == giornoSettimana,
+      orElse: () => <String, dynamic>{},
+    );
+
+    // Se non esiste una configurazione per quel giorno,
+    // consideriamo il centro chiuso.
+    if (orarioGiorno.isEmpty || orarioGiorno['is_chiuso'] == true) {
+      state = state.copyWith(startHour: 8.0, endHour: 9.0, giornoChiuso: true);
+      return;
+    }
+
+    double? minH;
+    double? maxH;
+
+    double? parseHour(String? value) {
+      if (value == null || value.isEmpty) return null;
+
+      final parts = value.split(':');
+      if (parts.isEmpty) return null;
+
+      final hour = double.tryParse(parts[0]);
+      if (hour == null) return null;
+
+      final minutes = parts.length > 1 ? double.tryParse(parts[1]) ?? 0.0 : 0.0;
+
+      return hour + (minutes / 60.0);
+    }
+
+    void aggiungiFascia(String? apertura, String? chiusura) {
+      final double? start = parseHour(apertura);
+      final double? end = parseHour(chiusura);
+
+      if (start == null || end == null) return;
+
+      if (minH == null || start < minH!) {
+        minH = start;
+      }
+
+      if (maxH == null || end > maxH!) {
+        maxH = end;
       }
     }
 
-    if (minH < maxH) {
-      state = state.copyWith(startHour: minH, endHour: maxH);
+    aggiungiFascia(
+      orarioGiorno['orario_apertura']?.toString(),
+      orarioGiorno['orario_chiusura']?.toString(),
+    );
+
+    aggiungiFascia(
+      orarioGiorno['orario_apertura_2']?.toString(),
+      orarioGiorno['orario_chiusura_2']?.toString(),
+    );
+
+    // Configurazione incompleta: consideriamo il giorno chiuso.
+    if (minH == null || maxH == null || minH! >= maxH!) {
+      state = state.copyWith(startHour: 8.0, endHour: 9.0, giornoChiuso: true);
+      return;
     }
+
+    state = state.copyWith(
+      startHour: minH!,
+      endHour: maxH!,
+      giornoChiuso: false,
+    );
   }
 
   DateTime _parseDateTimeSicuro(String data, String orario) {
@@ -339,6 +385,11 @@ class DashboardNotifier extends Notifier<DashboardState> {
       prenotazioniVisibili: tempAppointments,
       idCampoSelezionato: campoId,
     );
+  }
+
+  void aggiornaGiornoCalendario(DateTime giorno) {
+    _calcolaOrariGriglia(giorno);
+    filtraEConvertiDatiCalendario();
   }
 
   void aggiornaDataCorrente(String data) {

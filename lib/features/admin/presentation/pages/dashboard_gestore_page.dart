@@ -1001,18 +1001,24 @@ class _DashboardGestoreState extends ConsumerState<DashboardGestore> {
                       prenotazioniVisibili: state.prenotazioniVisibili,
                       startHour: state.startHour,
                       endHour: state.endHour,
+                      giornoChiuso: state.giornoChiuso,
                       onTap: _gestisciClickCalendario,
                       mainScrollController: _scrollController,
                       onViewChanged: (details) {
                         if (details.visibleDates.isNotEmpty) {
                           final dataCorrente = details.visibleDates.first;
+
                           WidgetsBinding.instance.addPostFrameCallback((_) {
                             if (mounted) {
-                              ref
-                                  .read(dashboardProvider.notifier)
-                                  .aggiornaDataCorrente(
-                                    "${dataCorrente.day}/${dataCorrente.month}/${dataCorrente.year}",
-                                  );
+                              final notifier = ref.read(
+                                dashboardProvider.notifier,
+                              );
+
+                              notifier.aggiornaGiornoCalendario(dataCorrente);
+
+                              notifier.aggiornaDataCorrente(
+                                "${dataCorrente.day}/${dataCorrente.month}/${dataCorrente.year}",
+                              );
                             }
                           });
                         }

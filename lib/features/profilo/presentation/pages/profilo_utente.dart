@@ -363,29 +363,6 @@ class ProfiloUtente extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () => _eliminaAccount(context, ref),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.redAccent,
-                side: const BorderSide(color: Colors.redAccent, width: 1.5),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              icon: const Icon(Icons.delete_forever, size: 22),
-              label: const Text(
-                'ELIMINA ACCOUNT',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1,
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -544,69 +521,6 @@ class ProfiloUtente extends ConsumerWidget {
           ),
         ),
       );
-    }
-  }
-
-  Future<void> _eliminaAccount(BuildContext context, WidgetRef ref) async {
-    final conferma = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.cardBg,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: Colors.redAccent, width: 1.5),
-        ),
-        title: const Text(
-          'Elimina Account',
-          style: TextStyle(
-            color: Colors.redAccent,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        content: const Text(
-          'Sei sicuro di voler eliminare il tuo account? Questa azione è irreversibile e cancellerà tutti i tuoi dati.',
-          style: TextStyle(color: Colors.white70, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Annulla', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.redAccent,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
-              'Elimina',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    if (conferma != true) return;
-
-    try {
-      await Supabase.instance.client.functions.invoke('elimina-utente');
-      await Supabase.instance.client.auth.signOut();
-      if (context.mounted) {
-        Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Errore eliminazione: $e'),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
-      }
     }
   }
 }

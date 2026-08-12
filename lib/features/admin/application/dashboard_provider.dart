@@ -331,10 +331,12 @@ class DashboardNotifier extends Notifier<DashboardState> {
           c['data_inizio'].toString(),
           c['orario_inizio'].toString(),
         );
+
         final end = _parseDateTimeSicuro(
           c['data_fine'].toString(),
           c['orario_fine'].toString(),
         );
+
         tempAppointments.add(
           Appointment(
             startTime: start,
@@ -347,15 +349,58 @@ class DashboardNotifier extends Notifier<DashboardState> {
       } catch (e) {}
     }
 
+    // =======================================================================
+    // CHIUSURE AUTOMATICHE TRA DUE FASCE DI APERTURA
+    //
+    // Esempio:
+    // 13:00 - 16:00
+    // 18:00 - 21:00
+    //
+    // Il calendario visualizza 13:00 - 21:00,
+    // ma il periodo 16:00 - 18:00 viene rappresentato come CHIUSO.
+    // =======================================================================
+
+    double? parseHourLocale(String? value) {
+      if (value == null || value.isEmpty) {
+        return null;
+      }
+
+      final parts = value.split(':');
+
+      final double? hour = double.tryParse(parts[0]);
+
+      if (hour == null) {
+        return null;
+      }
+
+      final double minutes = parts.length > 1
+          ? double.tryParse(parts[1]) ?? 0.0
+          : 0.0;
+
+      return hour + (minutes / 60.0);
+    }
+
     final DateTime oggi = DateTime.now();
+
     for (int i = -30; i <= 30; i++) {
       final DateTime giornoCorrente = oggi.add(Duration(days: i));
+
       final int giornoSettimana = giornoCorrente.weekday;
+
       final orarioGiorno = state.orariSocieta.firstWhere(
         (o) => o['giorno_settimana'] == giornoSettimana,
         orElse: () => <String, dynamic>{},
       );
-      if (orarioGiorno.isNotEmpty && orarioGiorno['is_chiuso'] == true) {
+
+      if (orarioGiorno.isEmpty) {
+        continue;
+      }
+
+      // ================================================================
+      // GIORNO COMPLETAMENTE CHIUSO
+      // ================================================================
+
+      if (orarioGiorno['is_chiuso'] == true) {
         tempAppointments.add(
           Appointment(
             startTime: DateTime(
@@ -375,6 +420,64 @@ class DashboardNotifier extends Notifier<DashboardState> {
             ),
             subject: '⛔ GIORNO DI CHIUSURA',
             color: Colors.grey.shade900,
+            isAllDay: false,
+          ),
+        );
+
+        continue;
+      }
+
+      // ================================================================
+      // DUE FASCE DI APERTURA
+      // ================================================================
+
+      final double? primaChiusura = parseHourLocale(
+        orarioGiorno['orario_chiusura']?.toString(),
+      );
+
+      final double? secondaApertura = parseHourLocale(
+        orarioGiorno['orario_apertura_2']?.toString(),
+      );
+
+      // Se ad esempio abbiamo:
+      //
+      // 13:00 - 16:00
+      // 18:00 - 21:00
+      //
+      // creiamo automaticamente:
+      //
+      // 16:00 - 18:00 = CHIUSO
+
+      if (primaChiusura != null &&
+          secondaApertura != null &&
+          secondaApertura > primaChiusura) {
+        final int startHour = primaChiusura.floor();
+
+        final int startMinute = ((primaChiusura - startHour) * 60).round();
+
+        final int endHour = secondaApertura.floor();
+
+        final int endMinute = ((secondaApertura - endHour) * 60).round();
+
+        tempAppointments.add(
+          Appointment(
+            id: 'chiusura_fascia_${giornoCorrente.toIso8601String()}',
+            startTime: DateTime(
+              giornoCorrente.year,
+              giornoCorrente.month,
+              giornoCorrente.day,
+              startHour,
+              startMinute,
+            ),
+            endTime: DateTime(
+              giornoCorrente.year,
+              giornoCorrente.month,
+              giornoCorrente.day,
+              endHour,
+              endMinute,
+            ),
+            subject: '⛔ CHIUSO',
+            color: Colors.grey.shade800,
             isAllDay: false,
           ),
         );

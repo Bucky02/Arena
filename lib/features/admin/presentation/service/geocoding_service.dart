@@ -19,6 +19,9 @@ class GeocodingService {
         },
       );
 
+      debugPrint("Geocoding status: ${response.statusCode}"); // AGGIUNGI
+      debugPrint("Geocoding body: ${response.body}"); // AGGIUNGI
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as List;
         if (data.isNotEmpty) {

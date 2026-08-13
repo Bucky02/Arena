@@ -25,6 +25,46 @@ final List<Map<String, String>> livelliDisponibili = [
   },
 ];
 
+// Normalizza la chiave per il database (es. tennis_singolo e tennis_doppio diventano entrambi "tennis")
+String _normalizzaChiaveSport(String sport) {
+  if (sport.contains('tennis')) return 'tennis';
+  return sport;
+}
+
+// Icona dinamica per il popup
+IconData _getIconaSport(String sport) {
+  if (sport.contains('calcio')) return Icons.sports_soccer;
+  if (sport.contains('tennis')) return Icons.sports_tennis;
+  if (sport.contains('padel')) return Icons.sports_tennis;
+  if (sport.contains('basket')) return Icons.sports_basketball;
+  if (sport.contains('volley')) return Icons.sports_volleyball;
+  return Icons.sports_score;
+}
+
+// Titolo leggibile nel popup
+String _getTitoloSportPulito(String sportChiave) {
+  switch (sportChiave) {
+    case 'calcio_5':
+      return 'Calcio a 5';
+    case 'calcio_7':
+      return 'Calcio a 7';
+    case 'calcio_8':
+      return 'Calcio a 8';
+    case 'calcio_11':
+      return 'Calcio a 11';
+    case 'tennis':
+      return 'Tennis';
+    case 'padel':
+      return 'Padel';
+    case 'basket':
+      return 'Basket';
+    case 'volley':
+      return 'Pallavolo';
+    default:
+      return sportChiave.toUpperCase();
+  }
+}
+
 Future<void> verificaESelezionaLivello({
   required BuildContext context,
   required String userId,
@@ -34,13 +74,17 @@ Future<void> verificaESelezionaLivello({
 }) async {
   Map<String, dynamic> mappaLivelli = Map.from(livelliSportAttuali ?? {});
 
-  // Se ha già impostato il livello, proseguiamo direttamente
-  if (mappaLivelli.containsKey(sport) && mappaLivelli[sport] != null) {
+  // Sia 'tennis_singolo' che 'tennis_doppio' useranno la chiave "tennis"
+  final String chiaveSport = _normalizzaChiaveSport(sport);
+
+  // Se ha già un livello impostato per questo sport, proseguiamo direttamente
+  if (mappaLivelli.containsKey(chiaveSport) &&
+      mappaLivelli[chiaveSport] != null) {
     onCompletato();
     return;
   }
 
-  // Mostra il Bottom Sheet che scivola dal basso
+  // Mostra il Bottom Sheet
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
@@ -56,7 +100,6 @@ Future<void> verificaESelezionaLivello({
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // "Pillola" di trascinamento in stile iOS/Modern UI
               Container(
                 width: 38,
                 height: 4,
@@ -70,13 +113,13 @@ Future<void> verificaESelezionaLivello({
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
                       color: AppTheme.accent.withOpacity(0.15),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
-                      Icons.sports_soccer,
+                    child: Icon(
+                      _getIconaSport(chiaveSport),
                       color: AppTheme.accent,
                       size: 24,
                     ),
@@ -87,7 +130,7 @@ Future<void> verificaESelezionaLivello({
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          "Seleziona livello (${sport.toUpperCase()})",
+                          "Livello ${_getTitoloSportPulito(chiaveSport)}",
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 18,
@@ -109,7 +152,6 @@ Future<void> verificaESelezionaLivello({
               ),
               const SizedBox(height: 20),
 
-              // Lista livelli
               Flexible(
                 child: ListView.separated(
                   shrinkWrap: true,
@@ -121,16 +163,35 @@ Future<void> verificaESelezionaLivello({
                     return InkWell(
                       borderRadius: BorderRadius.circular(16),
                       onTap: () async {
-                        Navigator.pop(sheetContext); // Chiude il Bottom Sheet
+                        Navigator.pop(sheetContext);
 
-                        mappaLivelli[sport] = item['titolo'];
+                        // 1. Aggiorniamo la mappa locale
+                        mappaLivelli[chiaveSport] = item['titolo'];
 
-                        // Aggiornamento su Supabase
-                        await Supabase.instance.client
-                            .from('utenti')
-                            .update({'livelli_sport': mappaLivelli})
-                            .eq('id', userId);
+                        try {
+                          debugPrint(
+                            "Sto salvando su Supabase per $userId la mappa: $mappaLivelli",
+                          );
 
+                          // 2. Inviamo la mappa aggiornata a Supabase
+                          await Supabase.instance.client
+                              .from('utenti')
+                              .update({
+                                'livelli_sport':
+                                    mappaLivelli, // Passiamo la Map aggiornata
+                              })
+                              .eq('id', userId);
+
+                          debugPrint(
+                            "Livello salvato con successo per $chiaveSport: ${item['titolo']}",
+                          );
+                        } catch (e) {
+                          debugPrint(
+                            "❌ Errore durante il salvataggio su Supabase: $e",
+                          );
+                        }
+
+                        // 3. Proseguiamo con il callback
                         onCompletato();
                       },
                       child: Container(

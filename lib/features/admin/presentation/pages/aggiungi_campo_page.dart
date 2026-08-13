@@ -25,10 +25,30 @@ class _AggiungiCampoState extends State<AggiungiCampo> {
   late final CampiService _campiService;
 
   final _nomeController = TextEditingController();
-  final _prezzoController = TextEditingController();
 
-  int _numeroGiocatori = 5;
-  final List<int> _opzioniGiocatori = [5, 7, 8, 11];
+  // Lista sport supportati con icone ed etichette
+  final List<Map<String, dynamic>> _sportDisponibili = [
+    {'id': 'calcio_5', 'label': 'Calcio a 5', 'icon': Icons.sports_soccer},
+    {'id': 'calcio_7', 'label': 'Calcio a 7', 'icon': Icons.sports_soccer},
+    {'id': 'calcio_8', 'label': 'Calcio a 8', 'icon': Icons.sports_soccer},
+    {'id': 'calcio_11', 'label': 'Calcio a 11', 'icon': Icons.sports_soccer},
+    {
+      'id': 'tennis_singolo',
+      'label': 'Tennis Singolo (1 vs 1)',
+      'icon': Icons.sports_tennis,
+    },
+    {
+      'id': 'tennis_doppio',
+      'label': 'Tennis Doppio (2 vs 2)',
+      'icon': Icons.sports_tennis,
+    },
+    {'id': 'tennis', 'label': 'Tennis', 'icon': Icons.sports_tennis},
+    {'id': 'basket', 'label': 'Basket', 'icon': Icons.sports_basketball},
+    {'id': 'volley', 'label': 'Pallavolo', 'icon': Icons.sports_volleyball},
+  ];
+
+  final Map<String, bool> _sportSelezionati = {};
+  final Map<String, TextEditingController> _prezzoControllers = {};
 
   bool _isCoperto = false;
   bool _isCaricamento = false;
@@ -42,25 +62,52 @@ class _AggiungiCampoState extends State<AggiungiCampo> {
     super.initState();
     _campiService = CampiService();
 
+    for (var sport in _sportDisponibili) {
+      final sportId = sport['id'] as String;
+      _sportSelezionati[sportId] = false;
+      _prezzoControllers[sportId] = TextEditingController();
+    }
+
     if (widget.campoEsistente != null) {
       final c = widget.campoEsistente!;
       _nomeController.text = c['nome_campo'] ?? '';
-      _prezzoController.text = (c['prezzo'] ?? 0).toString();
       _isCoperto = c['coperto'] ?? false;
       _fotoUrl = c['foto_url'];
 
-      final int valoreDb = c['numero_di_giocatori'] ?? 10;
-      final int valoreMostrato = valoreDb ~/ 2;
-      _numeroGiocatori = _opzioniGiocatori.contains(valoreMostrato)
-          ? valoreMostrato
-          : 5;
+      if (c['tariffe_sport'] != null &&
+          (c['tariffe_sport'] as List).isNotEmpty) {
+        final List tariffe = c['tariffe_sport'];
+        for (var t in tariffe) {
+          final String sportId = t['sport'] ?? '';
+          final double prezzo = (t['prezzo'] ?? 0).toDouble();
+
+          if (_sportSelezionati.containsKey(sportId)) {
+            _sportSelezionati[sportId] = true;
+            _prezzoControllers[sportId]?.text = prezzo > 0
+                ? prezzo.toStringAsFixed(2)
+                : '';
+          }
+        }
+      } else {
+        final double prezzoVecchio = (c['prezzo'] ?? 0).toDouble();
+        _sportSelezionati['calcio_5'] = true;
+        _prezzoControllers['calcio_5']?.text = prezzoVecchio > 0
+            ? prezzoVecchio.toStringAsFixed(2)
+            : '';
+      }
+    } else {
+      for (var key in _sportSelezionati.keys) {
+        _sportSelezionati[key] = false;
+      }
     }
   }
 
   @override
   void dispose() {
     _nomeController.dispose();
-    _prezzoController.dispose();
+    for (var controller in _prezzoControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -68,7 +115,7 @@ class _AggiungiCampoState extends State<AggiungiCampo> {
     try {
       final XFile? image = await _picker.pickImage(
         source: ImageSource.gallery,
-        imageQuality: 70,
+        imageQuality: 75,
       );
       if (image == null) return;
       final bytes = await image.readAsBytes();
@@ -101,47 +148,82 @@ class _AggiungiCampoState extends State<AggiungiCampo> {
   }
 
   void _salvaCampo() async {
+    final haSportSelezionato = _sportSelezionati.values.contains(true);
+    if (!haSportSelezionato) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.white),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text('Seleziona almeno uno sport per questo campo!'),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+      return;
+    }
+
     if (_formKey.currentState!.validate()) {
       setState(() => _isCaricamento = true);
 
       try {
-        final double prezzoConvertito = double.parse(
-          _prezzoController.text.trim().replaceAll(',', '.'),
-        );
+        final List<Map<String, dynamic>> tariffeSport = [];
+        double? prezzoPrincipale;
 
-        String? idCampoAttuale;
+        for (var sport in _sportDisponibili) {
+          final sportId = sport['id'] as String;
+          if (_sportSelezionati[sportId] == true) {
+            final textPrezzo =
+                _prezzoControllers[sportId]?.text.trim().replaceAll(',', '.') ??
+                '0';
+            final double prezzoParsed = double.tryParse(textPrezzo) ?? 0.0;
 
-        if (widget.campoEsistente == null) {
-          await _campiService.salvaCampo(
-            idSocieta: widget.idSocieta,
-            nomeCampo: _nomeController.text.trim(),
-            numeroGiocatori: _numeroGiocatori,
-            prezzo: prezzoConvertito,
-            isCoperto: _isCoperto,
-          );
+            tariffeSport.add({'sport': sportId, 'prezzo': prezzoParsed});
 
-          final ultimoCampo = await Supabase.instance.client
-              .from('campi')
-              .select('id')
-              .eq('id_societa', widget.idSocieta)
-              .eq('nome_campo', _nomeController.text.trim())
-              .order('created_at', ascending: false)
-              .limit(1)
-              .maybeSingle();
-
-          idCampoAttuale = ultimoCampo?['id']?.toString();
-        } else {
-          idCampoAttuale = widget.campoEsistente!['id'].toString();
-          await _campiService.aggiornaCampo(
-            idCampo: widget.campoEsistente!['id'],
-            nomeCampo: _nomeController.text.trim(),
-            numeroGiocatori: _numeroGiocatori,
-            prezzo: prezzoConvertito,
-            isCoperto: _isCoperto,
-          );
+            prezzoPrincipale ??= prezzoParsed;
+          }
         }
 
-        // GESTIONE FOTO
+        String? idCampoAttuale;
+        final int numGiocatori = _calcolaNumeroGiocatori(tariffeSport);
+
+        if (widget.campoEsistente == null) {
+          final res = await Supabase.instance.client
+              .from('campi')
+              .insert({
+                'id_societa': widget.idSocieta,
+                'nome_campo': _nomeController.text.trim(),
+                'numero_di_giocatori': numGiocatori,
+                'prezzo': prezzoPrincipale ?? 0,
+                'coperto': _isCoperto,
+                'tariffe_sport': tariffeSport,
+              })
+              .select('id')
+              .single();
+
+          idCampoAttuale = res['id']?.toString();
+        } else {
+          idCampoAttuale = widget.campoEsistente!['id'].toString();
+          await Supabase.instance.client
+              .from('campi')
+              .update({
+                'nome_campo': _nomeController.text.trim(),
+                'numero_di_giocatori': numGiocatori,
+                'prezzo': prezzoPrincipale ?? 0,
+                'coperto': _isCoperto,
+                'tariffe_sport': tariffeSport,
+              })
+              .eq('id', idCampoAttuale);
+        }
+
         if (idCampoAttuale != null) {
           if (_fotoBytesLocali != null && _estensioneFotoLocale != null) {
             final fileName =
@@ -175,10 +257,15 @@ class _AggiungiCampoState extends State<AggiungiCampo> {
             SnackBar(
               content: Text(
                 widget.campoEsistente == null
-                    ? 'Campo aggiunto! 🎉'
-                    : 'Campo modificato! ✏️',
+                    ? 'Campo creato con successo! 🎉'
+                    : 'Campo aggiornato! ✏️',
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
-              backgroundColor: Colors.green,
+              backgroundColor: Colors.green.shade600,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           );
           Navigator.pop(context);
@@ -189,6 +276,10 @@ class _AggiungiCampoState extends State<AggiungiCampo> {
             SnackBar(
               content: Text(e.toString().replaceAll('Exception: ', '')),
               backgroundColor: Colors.redAccent,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           );
         }
@@ -198,27 +289,38 @@ class _AggiungiCampoState extends State<AggiungiCampo> {
     }
   }
 
-  InputDecoration _stileInput(String label, IconData icon) {
+  InputDecoration _stileInput(
+    String label,
+    IconData icon, {
+    String? prefixText,
+  }) {
     return InputDecoration(
       labelText: label,
-      labelStyle: TextStyle(color: Colors.grey.shade400),
-      prefixIcon: Icon(icon, color: AppTheme.neonOrange),
+      labelStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+      prefixIcon: Icon(icon, color: AppTheme.neonOrange, size: 22),
+      prefixText: prefixText,
+      prefixStyle: const TextStyle(
+        color: AppTheme.neonOrange,
+        fontWeight: FontWeight.bold,
+        fontSize: 16,
+      ),
       filled: true,
-      fillColor: AppTheme.cardBg,
+      fillColor: const Color(0xFF1E2026),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(15),
-        borderSide: BorderSide(color: Colors.grey.shade700),
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: Colors.white.withOpacity(0.08)),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: BorderRadius.circular(16),
         borderSide: const BorderSide(color: AppTheme.neonOrange, width: 2),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: BorderRadius.circular(16),
         borderSide: const BorderSide(color: Colors.redAccent, width: 1.5),
       ),
       focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: BorderRadius.circular(16),
         borderSide: const BorderSide(color: Colors.redAccent, width: 2),
       ),
       errorStyle: const TextStyle(
@@ -236,248 +338,456 @@ class _AggiungiCampoState extends State<AggiungiCampo> {
     final bool haImmagine = _fotoBytesLocali != null || urlValido;
 
     return Scaffold(
-      backgroundColor: AppTheme.darkBg,
+      backgroundColor: const Color(0xFF121318),
       appBar: AppBar(
-        backgroundColor: AppTheme.darkBg,
-        title: Text(isModifica ? 'Modifica Campo' : 'Inserisci Campo'),
-        iconTheme: const IconThemeData(color: AppTheme.neonOrange),
+        backgroundColor: const Color(0xFF121318),
+        elevation: 0,
+        centerTitle: true,
+        title: Text(
+          isModifica ? 'Modifica Campo' : 'Nuovo Campo',
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+            fontSize: 20,
+            letterSpacing: 0.5,
+          ),
+        ),
+        leading: IconButton(
+          icon: const Icon(
+            Icons.arrow_back_ios_new,
+            color: Colors.white,
+            size: 20,
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
       body: Center(
         child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
           padding: const EdgeInsets.all(20),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 500),
+            constraints: const BoxConstraints(maxWidth: 520),
             child: Form(
               key: _formKey,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // NOME CAMPO
+                  // CARD FOTO CAMPO
+                  const Text(
+                    'FOTO COPERTINA',
+                    style: TextStyle(
+                      color: AppTheme.neonOrange,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  GestureDetector(
+                    onTap: _selezionaFotoCampo,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      height: 170,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E2026),
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(
+                          color: haImmagine
+                              ? AppTheme.neonOrange
+                              : Colors.white.withOpacity(0.1),
+                          width: haImmagine ? 2 : 1,
+                        ),
+                        boxShadow: haImmagine
+                            ? [
+                                BoxShadow(
+                                  color: AppTheme.neonOrange.withOpacity(0.15),
+                                  blurRadius: 20,
+                                  spreadRadius: 2,
+                                ),
+                              ]
+                            : [],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            if (_fotoBytesLocali != null)
+                              Image.memory(_fotoBytesLocali!, fit: BoxFit.cover)
+                            else if (urlValido)
+                              Image.network(
+                                _fotoUrl!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    const Center(
+                                      child: Icon(
+                                        Icons.broken_image,
+                                        color: Colors.grey,
+                                        size: 40,
+                                      ),
+                                    ),
+                              )
+                            else
+                              Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(14),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.neonOrange.withOpacity(
+                                        0.1,
+                                      ),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.add_a_photo_rounded,
+                                      color: AppTheme.neonOrange,
+                                      size: 30,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  const Text(
+                                    'Carica immagine del campo',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Trascina o tocca per selezionare',
+                                    style: TextStyle(
+                                      color: Colors.grey.shade500,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            if (haImmagine)
+                              Positioned(
+                                top: 12,
+                                right: 12,
+                                child: Row(
+                                  children: [
+                                    GestureDetector(
+                                      onTap: _selezionaFotoCampo,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withOpacity(0.7),
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: Colors.white24,
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: const Icon(
+                                          Icons.edit,
+                                          color: Colors.white,
+                                          size: 16,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    GestureDetector(
+                                      onTap: _rimuoviFotoCampo,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          color: Colors.redAccent.withOpacity(
+                                            0.8,
+                                          ),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.delete,
+                                          color: Colors.white,
+                                          size: 16,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 30),
+
+                  // INFORMAZIONI GENERALI
+                  const Text(
+                    'DETTAGLI PRINCIPALI',
+                    style: TextStyle(
+                      color: AppTheme.neonOrange,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
                   TextFormField(
                     controller: _nomeController,
-                    style: const TextStyle(color: Colors.white),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
                     decoration: _stileInput(
                       'Nome Campo *',
-                      Icons.sports_soccer,
+                      Icons.sports_soccer_rounded,
                     ),
                     validator: (val) => val == null || val.trim().isEmpty
-                        ? 'Inserisci un nome'
+                        ? 'Inserisci il nome (es. Campo 1)'
                         : null,
                   ),
-                  const SizedBox(height: 20),
 
-                  // NUMERO GIOCATORI
-                  DropdownButtonFormField<int>(
-                    value: _numeroGiocatori,
-                    dropdownColor: AppTheme.cardBg,
-                    style: const TextStyle(color: Colors.white, fontSize: 16),
-                    decoration: _stileInput('Tipo di Campo *', Icons.people),
-                    items: _opzioniGiocatori
-                        .map(
-                          (val) => DropdownMenuItem(
-                            value: val,
-                            child: Text('Calcio a $val'),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (val) => setState(() => _numeroGiocatori = val!),
-                  ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
 
-                  // PREZZO
-                  TextFormField(
-                    controller: _prezzoController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    style: const TextStyle(color: Colors.white),
-                    decoration: _stileInput('Prezzo orario (€) *', Icons.euro),
-                    validator: (val) {
-                      if (val == null || val.trim().isEmpty)
-                        return 'Inserisci il prezzo';
-                      final parsed = double.tryParse(
-                        val.trim().replaceAll(',', '.'),
-                      );
-                      if (parsed == null || parsed < 0)
-                        return 'Inserisci un prezzo valido';
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 20),
-
-                  // COPERTO
+                  // SWITCH COPERTO MODERN
                   Container(
                     decoration: BoxDecoration(
-                      color: AppTheme.cardBg,
-                      borderRadius: BorderRadius.circular(15),
-                      border: Border.all(color: Colors.grey.shade700),
+                      color: const Color(0xFF1E2026),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.white.withOpacity(0.08)),
                     ),
                     child: SwitchListTile(
-                      title: const Text(
-                        'Campo Coperto',
-                        style: TextStyle(color: Colors.white),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 4,
                       ),
-                      activeThumbColor: AppTheme.neonOrange,
+                      title: const Text(
+                        'Struttura Coperta',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                      ),
+                      subtitle: Text(
+                        _isCoperto
+                            ? 'Campo protetto da intemperie'
+                            : 'Campo all\'aperto / Outdoor',
+                        style: TextStyle(
+                          color: Colors.grey.shade500,
+                          fontSize: 12,
+                        ),
+                      ),
+                      activeColor: AppTheme.neonOrange,
                       value: _isCoperto,
                       onChanged: (val) => setState(() => _isCoperto = val),
                     ),
                   ),
-                  const SizedBox(height: 25),
 
-                  // FOTO CAMPO
-                  const Text(
-                    'Foto Campo (Facoltativa)',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Container(
-                    width: double.infinity,
-                    height: 140,
-                    decoration: BoxDecoration(
-                      color: AppTheme.cardBg,
-                      borderRadius: BorderRadius.circular(15),
-                      border: Border.all(
-                        color: haImmagine
-                            ? AppTheme.neonOrange
-                            : Colors.grey.shade700,
-                        width: 1.5,
+                  const SizedBox(height: 30),
+
+                  // SPORT E TARIFFE
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'SPORT E TARIFFE ORARIE',
+                        style: TextStyle(
+                          color: AppTheme.neonOrange,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.2,
+                        ),
                       ),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(13),
-                      child: Stack(
-                        fit: StackFit.expand,
+                      Text(
+                        '60 min standard',
+                        style: TextStyle(
+                          color: Colors.grey.shade500,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // GRID / CARDS DEGLI SPORT
+                  ..._sportDisponibili.map((sport) {
+                    final sportId = sport['id'] as String;
+                    final sportLabel = sport['label'] as String;
+                    final sportIcon = sport['icon'] as IconData;
+                    final bool isSelected = _sportSelezionati[sportId] ?? false;
+
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? const Color(0xFF252830)
+                            : const Color(0xFF1E2026),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: isSelected
+                              ? AppTheme.neonOrange
+                              : Colors.white.withOpacity(0.05),
+                          width: isSelected ? 2 : 1,
+                        ),
+                      ),
+                      child: Column(
                         children: [
-                          if (_fotoBytesLocali != null)
-                            Image.memory(_fotoBytesLocali!, fit: BoxFit.cover)
-                          else if (urlValido)
-                            Image.network(
-                              _fotoUrl!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      const Icon(
-                                        Icons.broken_image,
-                                        color: Colors.grey,
-                                        size: 36,
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        'Immagine non disponibile',
-                                        style: TextStyle(
-                                          color: Colors.grey.shade500,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
+                          InkWell(
+                            onTap: () {
+                              setState(() {
+                                _sportSelezionati[sportId] = !isSelected;
+                              });
+                            },
+                            borderRadius: BorderRadius.circular(12),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? AppTheme.neonOrange
+                                        : Colors.white.withOpacity(0.05),
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
-                            )
-                          else
-                            GestureDetector(
-                              onTap: _selezionaFotoCampo,
-                              behavior: HitTestBehavior.opaque,
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(
-                                    Icons.add_a_photo,
-                                    color: AppTheme.neonOrange,
-                                    size: 36,
+                                  child: Icon(
+                                    sportIcon,
+                                    color: isSelected
+                                        ? Colors.black
+                                        : Colors.grey.shade400,
+                                    size: 20,
                                   ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Clicca per caricare una foto del campo',
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Text(
+                                    sportLabel,
                                     style: TextStyle(
-                                      color: Colors.grey.shade400,
-                                      fontSize: 13,
+                                      color: isSelected
+                                          ? Colors.white
+                                          : Colors.grey.shade400,
+                                      fontWeight: isSelected
+                                          ? FontWeight.bold
+                                          : FontWeight.w500,
+                                      fontSize: 16,
                                     ),
                                   ),
-                                ],
-                              ),
+                                ),
+                                Container(
+                                  width: 24,
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: isSelected
+                                        ? AppTheme.neonOrange
+                                        : Colors.transparent,
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? AppTheme.neonOrange
+                                          : Colors.grey.shade600,
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: isSelected
+                                      ? const Icon(
+                                          Icons.check,
+                                          size: 16,
+                                          color: Colors.black,
+                                        )
+                                      : null,
+                                ),
+                              ],
                             ),
-                          if (haImmagine)
-                            Positioned(
-                              bottom: 10,
-                              right: 10,
-                              child: Row(
-                                children: [
-                                  GestureDetector(
-                                    onTap: _selezionaFotoCampo,
-                                    child: Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: const BoxDecoration(
-                                        color: AppTheme.neonOrange,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.edit,
-                                        color: Colors.black,
-                                        size: 18,
-                                      ),
-                                    ),
+                          ),
+                          if (isSelected) ...[
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: _prezzoControllers[sportId],
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
                                   ),
-                                  const SizedBox(width: 12),
-                                  GestureDetector(
-                                    onTap: _rimuoviFotoCampo,
-                                    child: Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: const BoxDecoration(
-                                        color: Colors.redAccent,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.delete,
-                                        color: Colors.white,
-                                        size: 18,
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
                               ),
+                              decoration: _stileInput(
+                                'Tariffa Oraria',
+                                Icons.euro_symbol_rounded,
+                                prefixText: '€ ',
+                              ),
+                              validator: (val) {
+                                if (_sportSelezionati[sportId] == true) {
+                                  if (val == null || val.trim().isEmpty) {
+                                    return 'Inserisci la tariffa';
+                                  }
+                                  final parsed = double.tryParse(
+                                    val.trim().replaceAll(',', '.'),
+                                  );
+                                  if (parsed == null || parsed <= 0) {
+                                    return 'Inserisci una cifra valida';
+                                  }
+                                }
+                                return null;
+                              },
                             ),
+                          ],
                         ],
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 40),
+                    );
+                  }),
+
+                  const SizedBox(height: 35),
 
                   // BOTTONE SALVA
-                  SizedBox(
+                  Container(
                     width: double.infinity,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.neonOrange.withOpacity(0.3),
+                          blurRadius: 20,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
                     child: ElevatedButton(
                       onPressed: _isCaricamento ? null : _salvaCampo,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppTheme.neonOrange,
                         foregroundColor: Colors.black,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        elevation: 0,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30),
+                          borderRadius: BorderRadius.circular(18),
                         ),
                       ),
                       child: _isCaricamento
                           ? const SizedBox(
-                              height: 20,
-                              width: 20,
+                              height: 24,
+                              width: 24,
                               child: CircularProgressIndicator(
                                 color: Colors.black,
-                                strokeWidth: 2,
+                                strokeWidth: 2.5,
                               ),
                             )
                           : Text(
-                              isModifica ? 'Salva Modifiche' : 'Salva Campo',
+                              isModifica
+                                  ? 'AGGIORNA CAMPO'
+                                  : 'SALVA NUOVO CAMPO',
                               style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.8,
                               ),
                             ),
                     ),
                   ),
+                  const SizedBox(height: 20),
                 ],
               ),
             ),
@@ -485,5 +795,34 @@ class _AggiungiCampoState extends State<AggiungiCampo> {
         ),
       ),
     );
+  }
+
+  // Mappa di default dei giocatori in base allo sport selezionato
+  int _calcolaNumeroGiocatori(List<Map<String, dynamic>> tariffe) {
+    if (tariffe.isEmpty) return 10;
+    final primoSport = tariffe.first['sport'] as String;
+
+    switch (primoSport) {
+      case 'calcio_5':
+        return 10;
+      case 'calcio_7':
+        return 14;
+      case 'calcio_8':
+        return 16;
+      case 'calcio_11':
+        return 22;
+      case 'padel':
+        return 4;
+      case 'tennis_singolo':
+        return 2;
+      case 'tennis_doppio':
+        return 4;
+      case 'basket':
+        return 10;
+      case 'volley':
+        return 12;
+      default:
+        return 10;
+    }
   }
 }

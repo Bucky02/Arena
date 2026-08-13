@@ -724,7 +724,10 @@ class _SelettorePartecipanti extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final maxGiocatori = state.campoSelezionato?.numeroDiGiocatori ?? 0;
+    final maxGiocatori = _calcolaMaxGiocatoriPerSport(
+      state.sportSelezionato,
+      state.campoSelezionato?.numeroDiGiocatori ?? 0,
+    );
     final int postiDisponibiliPerAmici = maxGiocatori - 1;
     final int mancanti = maxGiocatori - (state.ospitiExtra + 1);
 
@@ -1101,7 +1104,10 @@ class _BuildStickyBottomBar extends ConsumerWidget {
     final state = ref.watch(creazionePartitaProvider);
     final controller = ref.read(creazionePartitaProvider.notifier);
 
-    final maxGiocatori = state.campoSelezionato?.numeroDiGiocatori ?? 0;
+    final maxGiocatori = _calcolaMaxGiocatoriPerSport(
+      state.sportSelezionato,
+      state.campoSelezionato?.numeroDiGiocatori ?? 0,
+    );
     final isVirtualmenteCompleta =
         state.isPartitaPrivata || ((state.ospitiExtra + 1) >= maxGiocatori);
     final int aperteNelloSlot = state.oraInizioSelezionata != null
@@ -1198,7 +1204,10 @@ class _BuildStickyBottomBar extends ConsumerWidget {
       final utente = ref.read(utenteCorrenteProvider).value;
       if (utente == null) throw Exception('Utente non autenticato.');
 
-      final maxGiocatori = state.campoSelezionato!.numeroDiGiocatori;
+      final maxGiocatori = _calcolaMaxGiocatoriPerSport(
+        state.sportSelezionato,
+        state.campoSelezionato!.numeroDiGiocatori,
+      );
       final ospitiAttuali = state.ospitiExtra + 1;
       final isPrivata = state.isPartitaPrivata;
       final isCompleta = isPrivata || (ospitiAttuali >= maxGiocatori);
@@ -1310,4 +1319,16 @@ class _BuildStickyBottomBar extends ConsumerWidget {
       ),
     );
   }
+}
+
+int _calcolaMaxGiocatoriPerSport(String sport, int defaultCampo) {
+  // Applichiamo la variazione dinamica SOLO ed ESCLUSIVAMENTE al Tennis
+  if (sport == 'tennis_singolo') {
+    return 2;
+  } else if (sport == 'tennis_doppio') {
+    return 4;
+  }
+
+  // Per tutti gli altri campi/sport, usa SEMPRE il valore reale del campo!
+  return defaultCampo;
 }

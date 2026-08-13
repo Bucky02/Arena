@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:app_campi/features/prenotazione/application/creazione_partita_controller.dart';
 import 'package:app_campi/core/theme/app_theme.dart';
-import 'package:app_campi/features/prenotazione/presentation/widget/societa_card.dart';
+import 'package:app_campi/features/prenotazione/presentation/widget/societa_card_pro.dart';
 import 'lista_campi_centro_page.dart';
 
 class RicercaCentriPage extends ConsumerStatefulWidget {
@@ -15,11 +15,27 @@ class RicercaCentriPage extends ConsumerStatefulWidget {
 }
 
 class _RicercaCentriPageState extends ConsumerState<RicercaCentriPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(creazionePartitaProvider.notifier).applicaFiltri();
+    });
+  }
+
   final TextEditingController searchCtrl = TextEditingController();
   TipoRicerca filtroSelezionato = TipoRicerca.tutti;
 
   Timer? _debounceTimer;
-  bool _ricercaEseguita = false;
+  bool _ricercaAttiva = false;
+
+  final List<Map<String, dynamic>> _sports = [
+    {'id': 'calcio_5', 'label': 'Calcio 5', 'icon': Icons.sports_soccer},
+    {'id': 'padel', 'label': 'Padel', 'icon': Icons.sports_tennis},
+    {'id': 'tennis', 'label': 'Tennis', 'icon': Icons.sports_tennis},
+    {'id': 'basket', 'label': 'Basket', 'icon': Icons.sports_basketball},
+    {'id': 'volley', 'label': 'Volley', 'icon': Icons.sports_volleyball},
+  ];
 
   @override
   void dispose() {
@@ -28,176 +44,289 @@ class _RicercaCentriPageState extends ConsumerState<RicercaCentriPage> {
     super.dispose();
   }
 
-  void _onSearchChanged(String value) {
-    _debounceTimer?.cancel();
-    final testo = value.trim();
-
-    if (testo.length < 3) {
-      if (_ricercaEseguita) {
-        setState(() => _ricercaEseguita = false);
-      }
-      return;
-    }
-
-    _debounceTimer = Timer(const Duration(milliseconds: 450), () {
-      if (!mounted) return;
-      setState(() => _ricercaEseguita = true);
-      ref.read(creazionePartitaProvider.notifier).cercaSocieta(testo);
-    });
-  }
-
-  void _eseguiRicerca() {
-    _debounceTimer?.cancel();
-    FocusManager.instance.primaryFocus?.unfocus();
-    final query = searchCtrl.text.trim();
-
-    if (query.length < 3) {
-      if (_ricercaEseguita) {
-        setState(() => _ricercaEseguita = false);
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Inserisci almeno 3 caratteri per cercare."),
-          backgroundColor: AppTheme.statoAttenzione,
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-
-    setState(() => _ricercaEseguita = true);
-    ref.read(creazionePartitaProvider.notifier).cercaSocieta(query);
-  }
-
-  void _cancellaRicerca() {
-    _debounceTimer?.cancel();
-    searchCtrl.clear();
-    setState(() => _ricercaEseguita = false);
-  }
-
-  Widget _buildFilterChip(String label, TipoRicerca tipo) {
-    final bool isSelected = filtroSelezionato == tipo;
-    return GestureDetector(
-      onTap: () {
-        if (filtroSelezionato == tipo) return;
-
-        setState(() => filtroSelezionato = tipo);
-        ref.read(creazionePartitaProvider.notifier).impostaFiltroRicerca(tipo);
-
-        final testo = searchCtrl.text.trim();
-        if (testo.length >= 3) {
-          FocusManager.instance.primaryFocus?.unfocus();
-          ref.read(creazionePartitaProvider.notifier).cercaSocieta(testo);
-        }
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeInOut,
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? AppTheme.accent.withOpacity(0.12)
-              : AppTheme.cardBg,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected
-                ? AppTheme.accent.withOpacity(0.5)
-                : AppTheme.cardBorder,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isSelected ? AppTheme.accent : AppTheme.textSecondary,
-            fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600,
-            fontSize: 13,
-            letterSpacing: 0.3,
-          ),
-        ),
+  // POPUP SELEZIONE OPZIONE B: TENNIS SINGOLO O DOPPIO
+  void _mostraModalitaTennis(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E2026),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
       ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Che tipo di Tennis vuoi giocare?',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const Icon(Icons.person, color: AppTheme.neonOrange),
+                title: const Text(
+                  'Singolo (1 vs 1)',
+                  style: TextStyle(color: Colors.white),
+                ),
+                subtitle: const Text(
+                  '2 Giocatori in campo',
+                  style: TextStyle(color: Colors.grey),
+                ),
+                onTap: () {
+                  ref
+                      .read(creazionePartitaProvider.notifier)
+                      .impostaSport('tennis_singolo');
+                  ref.read(creazionePartitaProvider.notifier).applicaFiltri();
+                  Navigator.pop(context);
+                },
+              ),
+              const Divider(color: Colors.white12),
+              ListTile(
+                leading: const Icon(Icons.group, color: AppTheme.neonOrange),
+                title: const Text(
+                  'Doppio (2 vs 2)',
+                  style: TextStyle(color: Colors.white),
+                ),
+                subtitle: const Text(
+                  '4 Giocatori in campo',
+                  style: TextStyle(color: Colors.grey),
+                ),
+                onTap: () {
+                  ref
+                      .read(creazionePartitaProvider.notifier)
+                      .impostaSport('tennis_doppio');
+                  ref.read(creazionePartitaProvider.notifier).applicaFiltri();
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildBody(state) {
-    if (!_ricercaEseguita) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.travel_explore_rounded, color: Colors.white12, size: 72),
-            SizedBox(height: 16),
-            Text(
-              'Cerca per nome centro\no per città',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white38,
-                fontSize: 16,
-                height: 1.5,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+  // BOTTOM SHEET PER LA SCELTA DI TUTTI GLI SPORT
+  void _mostraSelezionaSport(BuildContext context) {
+    final state = ref.read(creazionePartitaProvider);
 
-    if (state.isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppTheme.accent),
-      );
-    }
+    // Mappa di visualizzazione con le etichette per l'interfaccia
+    final List<Map<String, dynamic>> tuttiGliSport = [
+      {'id': 'calcio_5', 'label': 'Calcio a 5', 'icon': Icons.sports_soccer},
+      {'id': 'calcio_7', 'label': 'Calcio a 7', 'icon': Icons.sports_soccer},
+      {'id': 'calcio_8', 'label': 'Calcio a 8', 'icon': Icons.sports_soccer},
+      {'id': 'calcio_11', 'label': 'Calcio a 11', 'icon': Icons.sports_soccer},
+      {'id': 'padel', 'label': 'Padel', 'icon': Icons.sports_tennis},
+      {
+        'id': 'tennis',
+        'label': 'Tennis',
+        'icon': Icons.sports_tennis,
+      }, // Apre sotto-scelta Singolo/Doppio
+      {'id': 'basket', 'label': 'Basket', 'icon': Icons.sports_basketball},
+      {'id': 'volley', 'label': 'Pallavolo', 'icon': Icons.sports_volleyball},
+    ];
 
-    if (state.societaTrovate.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.search_off_rounded,
-              color: Colors.white24,
-              size: 64,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Nessun risultato per\n"${searchCtrl.text.trim()}"',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white54,
-                fontSize: 16,
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Prova con un nome diverso o cambia filtro.',
-              style: TextStyle(color: Colors.white30, fontSize: 13),
-            ),
-          ],
-        ),
-      );
-    }
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E2026),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Text(
+                    'Seleziona Sport',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: tuttiGliSport.length,
+                    separatorBuilder: (context, index) =>
+                        const Divider(color: Colors.white12, height: 1),
+                    itemBuilder: (context, index) {
+                      final item = tuttiGliSport[index];
+                      final String sportId = item['id'];
+                      final String label = item['label'];
+                      final IconData icon = item['icon'];
 
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      physics: const BouncingScrollPhysics(),
-      itemCount: state.societaTrovate.length,
-      itemBuilder: (context, index) {
-        final societa = state.societaTrovate[index];
-        return SocietaCard(
-          societa: societa,
-          onTap: () {
-            ref
-                .read(creazionePartitaProvider.notifier)
-                .caricaCampiSocieta(societa.id);
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => ListaCampiCentroPage(societa: societa),
-              ),
-            );
-          },
+                      // Controlla se è lo sport attualmente selezionato
+                      final bool isSelected =
+                          state.sportSelezionato == sportId ||
+                          (sportId == 'tennis' &&
+                              state.sportSelezionato.contains('tennis'));
+
+                      return ListTile(
+                        leading: Icon(
+                          icon,
+                          color: isSelected
+                              ? AppTheme.neonOrange
+                              : Colors.grey.shade400,
+                        ),
+                        title: Text(
+                          label,
+                          style: TextStyle(
+                            color: isSelected
+                                ? AppTheme.neonOrange
+                                : Colors.white,
+                            fontWeight: isSelected
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                          ),
+                        ),
+                        trailing: isSelected
+                            ? const Icon(
+                                Icons.check_circle_rounded,
+                                color: AppTheme.neonOrange,
+                                size: 20,
+                              )
+                            : null,
+                        onTap: () {
+                          Navigator.pop(context); // Chiude il menu
+                          if (sportId == 'tennis') {
+                            _mostraModalitaTennis(context);
+                          } else {
+                            ref
+                                .read(creazionePartitaProvider.notifier)
+                                .impostaSport(sportId);
+                            ref
+                                .read(creazionePartitaProvider.notifier)
+                                .applicaFiltri();
+                          }
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
         );
+      },
+    );
+  }
+
+  // Funzione di utilità per formattare l'etichetta dello sport selezionato sul pulsante
+  String _getEtichettaSport(String sportId) {
+    switch (sportId) {
+      case 'calcio_5':
+        return 'Calcio 5';
+      case 'calcio_7':
+        return 'Calcio 7';
+      case 'calcio_8':
+        return 'Calcio 8';
+      case 'calcio_11':
+        return 'Calcio 11';
+      case 'padel':
+        return 'Padel';
+      case 'tennis_singolo':
+        return 'Tennis (Singolo)';
+      case 'tennis_doppio':
+        return 'Tennis (Doppio)';
+      case 'basket':
+        return 'Basket';
+      case 'volley':
+        return 'Volley';
+      default:
+        return 'Calcio 5';
+    }
+  }
+
+  // BOTTOM SHEET PER LA SCELTA FASCIA ORARIA
+  void _mostraSelezionaOrario(BuildContext context) {
+    final state = ref.read(creazionePartitaProvider);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E2026),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'A che ora vuoi giocare?',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              _buildOpzioneOrario(
+                'Tutto il giorno',
+                '00:00 - 23:59',
+                'tutto',
+                state.fasciaOraria,
+              ),
+              _buildOpzioneOrario(
+                'Mattino',
+                '06:00 - 12:00',
+                'mattina',
+                state.fasciaOraria,
+              ),
+              _buildOpzioneOrario(
+                'Pomeriggio',
+                '12:00 - 18:00',
+                'pomeriggio',
+                state.fasciaOraria,
+              ),
+              _buildOpzioneOrario(
+                'Sera',
+                '18:00 - 24:00',
+                'sera',
+                state.fasciaOraria,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildOpzioneOrario(
+    String titolo,
+    String orario,
+    String chiave,
+    String corrente,
+  ) {
+    final isSelected = chiave == corrente;
+    return RadioListTile<String>(
+      title: Text(titolo, style: const TextStyle(color: Colors.white)),
+      subtitle: Text(orario, style: const TextStyle(color: Colors.grey)),
+      value: chiave,
+      groupValue: corrente,
+      activeColor: AppTheme.neonOrange,
+      onChanged: (val) {
+        if (val != null) {
+          ref.read(creazionePartitaProvider.notifier).impostaFasciaOraria(val);
+          ref.read(creazionePartitaProvider.notifier).applicaFiltri();
+          Navigator.pop(context);
+        }
       },
     );
   }
@@ -207,203 +336,243 @@ class _RicercaCentriPageState extends ConsumerState<RicercaCentriPage> {
     final state = ref.watch(creazionePartitaProvider);
 
     return Scaffold(
-      backgroundColor: AppTheme.darkBg,
-      extendBodyBehindAppBar: true,
-      body: Stack(
-        children: [
-          Positioned(
-            top: -100,
-            left: -50,
-            child: Container(
-              width: 300,
-              height: 300,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppTheme.accent.withOpacity(0.05),
-              ),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 90, sigmaY: 90),
-                child: Container(color: Colors.transparent),
-              ),
-            ),
-          ),
-
-          SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(
-                    left: 8,
-                    right: 20,
-                    top: 12,
-                    bottom: 8,
-                  ),
-                  child: Row(
+      backgroundColor: const Color(0xFF121318),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // BARRA DI RICERCA + TITOLO
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
                       IconButton(
                         icon: const Icon(
-                          Icons.arrow_back_ios_new_rounded,
-                          color: AppTheme.textPrimary,
+                          Icons.arrow_back_ios_new,
+                          color: Colors.white,
                           size: 20,
                         ),
                         onPressed: () => Navigator.pop(context),
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        "PRENOTA PARTITA",
+                      const SizedBox(width: 8),
+                      const Text(
+                        'PRENOTA CAMPO',
                         style: TextStyle(
-                          color: AppTheme.textSecondary.withOpacity(0.8),
-                          fontSize: 12,
+                          color: Colors.white,
+                          fontSize: 18,
                           fontWeight: FontWeight.w900,
-                          letterSpacing: 2.0,
+                          letterSpacing: 1.0,
                         ),
                       ),
                     ],
                   ),
-                ),
+                  const SizedBox(height: 12),
 
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 10,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'DOVE VUOI GIOCARE?',
-                        style: TextStyle(
-                          color: AppTheme.textPrimary,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 18,
-                        ),
+                  // INPUT RICERCA
+                  TextField(
+                    controller: searchCtrl,
+                    style: const TextStyle(color: Colors.white),
+                    onChanged: (val) {
+                      setState(() => _ricercaAttiva = val.trim().isNotEmpty);
+                      if (val.trim().length >= 3) {
+                        ref
+                            .read(creazionePartitaProvider.notifier)
+                            .cercaSocieta(val.trim());
+                      }
+                    },
+                    decoration: InputDecoration(
+                      hintText: 'Cerca per centro o città...',
+                      hintStyle: TextStyle(color: Colors.grey.shade500),
+                      prefixIcon: const Icon(
+                        Icons.search,
+                        color: AppTheme.neonOrange,
                       ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: searchCtrl,
+                      filled: true,
+                      fillColor: const Color(0xFF1E2026),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 14,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // BARRA FILTRI POPUP (SOLO SPORT E GIORNO)
+            if (!_ricercaAttiva)
+              SizedBox(
+                height: 48,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  children: [
+                    // 1. TENDINA SPORT
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: FilterChip(
+                        avatar: const Icon(
+                          Icons.sports_soccer_rounded,
+                          size: 16,
+                          color: AppTheme.neonOrange,
+                        ),
+                        label: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _getEtichettaSport(state.sportSelezionato),
                               style: const TextStyle(
                                 color: Colors.white,
-                                fontSize: 15,
-                              ),
-                              onChanged: _onSearchChanged,
-                              onSubmitted: (_) => _eseguiRicerca(),
-                              decoration: InputDecoration(
-                                hintText: 'Cerca un centro o città...',
-                                hintStyle: const TextStyle(
-                                  color: AppTheme.textSecondary,
-                                ),
-                                prefixIcon: const Icon(
-                                  Icons.search,
-                                  color: AppTheme.textSecondary,
-                                ),
-                                suffixIcon:
-                                    ValueListenableBuilder<TextEditingValue>(
-                                      valueListenable: searchCtrl,
-                                      builder: (_, value, __) {
-                                        return value.text.isNotEmpty
-                                            ? IconButton(
-                                                icon: const Icon(
-                                                  Icons.close_rounded,
-                                                  color: AppTheme.textSecondary,
-                                                ),
-                                                onPressed: _cancellaRicerca,
-                                              )
-                                            : const SizedBox.shrink();
-                                      },
-                                    ),
-                                filled: true,
-                                fillColor: AppTheme.cardBg,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                  vertical: 16,
-                                ),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  borderSide: const BorderSide(
-                                    color: AppTheme.cardBorder,
-                                  ),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  borderSide: const BorderSide(
-                                    color: AppTheme.cardBorder,
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  borderSide: BorderSide(
-                                    color: AppTheme.accent.withOpacity(0.5),
-                                  ),
-                                ),
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Container(
-                            height: 52,
-                            width: 52,
-                            decoration: BoxDecoration(
-                              color: AppTheme.accent.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: AppTheme.accent.withOpacity(0.3),
-                              ),
-                            ),
-                            child: IconButton(
-                              onPressed: _eseguiRicerca,
-                              icon: const Icon(
-                                Icons.arrow_forward_rounded,
-                                color: AppTheme.accent,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: AppTheme.cardBg,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: AppTheme.cardBorder),
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: _buildFilterChip(
-                                'Tutti',
-                                TipoRicerca.tutti,
-                              ),
-                            ),
-                            Expanded(
-                              child: _buildFilterChip(
-                                'Società',
-                                TipoRicerca.societa,
-                              ),
-                            ),
-                            Expanded(
-                              child: _buildFilterChip(
-                                'Città',
-                                TipoRicerca.citta,
-                              ),
+                            const SizedBox(width: 4),
+                            const Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              color: Colors.white54,
+                              size: 18,
                             ),
                           ],
                         ),
+                        selected: false,
+                        backgroundColor: const Color(0xFF1E2026),
+                        onSelected: (_) => _mostraSelezionaSport(context),
                       ),
-                    ],
-                  ),
-                ),
+                    ),
 
-                Expanded(child: _buildBody(state)),
-              ],
+                    // 2. TENDINA GIORNO
+                    FilterChip(
+                      avatar: const Icon(
+                        Icons.calendar_today_rounded,
+                        size: 15,
+                        color: AppTheme.neonOrange,
+                      ),
+                      label: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _formattaDataFiltro(state.dataSelezionata),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            color: Colors.white54,
+                            size: 18,
+                          ),
+                        ],
+                      ),
+                      selected: false,
+                      backgroundColor: const Color(0xFF1E2026),
+                      onSelected: (_) => _selezionaGiorno(context),
+                    ),
+                  ],
+                ),
+              ),
+
+            const SizedBox(height: 16),
+
+            // LISTA REALE SOCIETA / CAMPI (Stile Playtomic)
+            Expanded(
+              child: state.isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        color: AppTheme.neonOrange,
+                      ),
+                    )
+                  : state.societaTrovate.isEmpty
+                  ? Center(
+                      child: Text(
+                        'Nessun centro trovato nelle vicinanze.',
+                        style: TextStyle(color: Colors.grey.shade500),
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: state.societaTrovate.length,
+                      itemBuilder: (context, index) {
+                        final societa = state.societaTrovate[index];
+                        // Recupera il prezzo dinamico estratto dal JSONB per questo sport
+                        final double prezzoReale =
+                            state.prezziPerSocieta[societa.id] ?? 0.0;
+
+                        return SocietaCardPro(
+                          societa: societa,
+                          sport: state.sportSelezionato,
+                          prezzoPartenza:
+                              prezzoReale, // <-- PREZZO REALE DAL DATABASE!
+                          distanzaKm:
+                              null, // Metti null se non vuoi mostrare i km inventati, oppure la tua variabile se hai la geolocalizzazione attiva
+                          onTap: () {
+                            ref
+                                .read(creazionePartitaProvider.notifier)
+                                .caricaCampiSocieta(societa.id);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    ListaCampiCentroPage(societa: societa),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
+  }
+
+  // POPUP CALENDARIO GIORNO
+  Future<void> _selezionaGiorno(BuildContext context) async {
+    final state = ref.read(creazionePartitaProvider);
+
+    final DateTime? nuovaData = await showDatePicker(
+      context: context,
+      initialDate: state.dataSelezionata,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 30)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: AppTheme.neonOrange,
+              onPrimary: Colors.black,
+              surface: Color(0xFF1E2026),
+              onSurface: Colors.white,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (nuovaData != null) {
+      ref.read(creazionePartitaProvider.notifier).impostaData(nuovaData);
+      ref.read(creazionePartitaProvider.notifier).applicaFiltri();
+    }
+  }
+
+  // Funzione di utilità per formattare la data sul pulsante (es. "Oggi", "Domani", "14 Ago")
+  String _formattaDataFiltro(DateTime data) {
+    final ora = DateTime.now();
+    final oggi = DateTime(ora.year, ora.month, ora.day);
+    final dataConfronto = DateTime(data.year, data.month, data.day);
+
+    if (dataConfronto == oggi) return 'Oggi';
+    if (dataConfronto == oggi.add(const Duration(days: 1))) return 'Domani';
+
+    return '${data.day}/${data.month}';
   }
 }

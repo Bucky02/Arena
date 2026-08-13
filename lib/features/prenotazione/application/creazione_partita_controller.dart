@@ -74,7 +74,54 @@ class CreazionePartitaController extends Notifier<CreazionePartitaState> {
       final societa = await _societaRepo.getSocietaById(idSocieta);
       final int limiteCampi = societa?.limiteCampi ?? campi.length;
       final campiAttivi = campi.take(limiteCampi).toList();
-      state = state.copyWith(isLoading: false, campiTrovati: campiAttivi);
+
+      // FILTRAGGIO CAMPI PER LO SPORT SELEZIONATO
+      final sportSelezionato = state.sportSelezionato;
+
+      final campiFiltratiPerSport = campiAttivi.where((campo) {
+        // 1. Controlliamo se la lista tariffeSport del campo contiene lo sport selezionato
+        if (campo.tariffeSport != null && campo.tariffeSport!.isNotEmpty) {
+          for (final t in campo.tariffeSport!) {
+            // Accesso sicuro alle proprietà di TariffaSport
+            final String sportNome = t.sport;
+            if (sportNome == sportSelezionato ||
+                (sportSelezionato.contains('tennis') &&
+                    sportNome.contains('tennis'))) {
+              return true;
+            }
+          }
+        }
+
+        // 2. Controllo sul nome del campo come fallback
+        final nomeCampo = campo.nomeCampo.toLowerCase();
+        if (sportSelezionato == 'calcio_5' &&
+            (nomeCampo.contains('calcio') || nomeCampo.contains('5'))) {
+          return true;
+        }
+        if (sportSelezionato.contains('tennis') &&
+            nomeCampo.contains('tennis')) {
+          return true;
+        }
+        if (sportSelezionato == 'padel' && nomeCampo.contains('padel')) {
+          return true;
+        }
+        if (sportSelezionato == 'basket' && nomeCampo.contains('basket')) {
+          return true;
+        }
+        if (sportSelezionato == 'volley' &&
+            (nomeCampo.contains('volley') || nomeCampo.contains('pallavolo'))) {
+          return true;
+        }
+
+        return false;
+      }).toList();
+
+      // Se per qualsiasi motivo la lista filtrata è vuota, mostra i campi attivi di fallback
+      final campiFinali = campiFiltratiPerSport.isNotEmpty
+          ? campiFiltratiPerSport
+          : campiAttivi;
+
+      state = state.copyWith(isLoading: false, campiTrovati: campiFinali);
     } catch (e) {
       state = state.copyWith(isLoading: false);
       debugPrint("Errore caricamento campi: $e");
@@ -303,19 +350,17 @@ class CreazionePartitaController extends Notifier<CreazionePartitaState> {
   }
 
   String getInfoStatoPartita() {
-    if (state.isPartitaPrivata) return "PARTITA PRIVATA (COMPLETA)";
+    final maxGiocatori =
+        getMaxGiocatori(); // 🔴 Usa getMaxGiocatori() invece di campo.numeroDiGiocatori!
+    final ospitiAttuali = state.ospitiExtra + 1;
 
-    final max = state.campoSelezionato?.numeroDiGiocatori ?? 0;
-    final attuali = state.ospitiExtra + 1;
+    if (state.isPartitaPrivata) return "PARTITA PRIVATA";
+    if (ospitiAttuali >= maxGiocatori) return "PARTITA AL COMPLETO";
 
-    if (attuali >= max) return "PARTITA AL COMPLETO";
-
-    final minRichiesti = _partitaService.getMinimoApertura(max, _isPrimeTime());
-    final sogliaProtezione = _partitaService.getSogliaProtezione(max);
-
-    if (attuali < minRichiesti) return "POCHI GIOCATORI";
-    if (attuali < sogliaProtezione || isMenoDi24h()) return "PARTITA A RISCHIO";
-    return "PARTITA PROTETTA";
+    // Logica normale
+    if (ospitiAttuali >= (maxGiocatori * 0.8).floor())
+      return "PARTITA PROTETTA";
+    return "PARTITA A RISCHIO";
   }
 
   Color getColoreStato() {
@@ -385,5 +430,98 @@ class CreazionePartitaController extends Notifier<CreazionePartitaState> {
   String _calcolaOrarioFine(String oraInizio) {
     int totalMinutes = _orarioInMinuti(oraInizio) + 60;
     return "${(totalMinutes ~/ 60 % 24).toString().padLeft(2, '0')}:${(totalMinutes % 60).toString().padLeft(2, '0')}:00";
+  }
+
+  void impostaSport(String sport) {
+    state = state.copyWith(sportSelezionato: sport);
+    // Ricarica o rifiltra i risultati
+  }
+
+  void impostaData(DateTime data) {
+    state = state.copyWith(dataSelezionata: data);
+  }
+
+  void impostaFasciaOraria(String fascia) {
+    state = state.copyWith(fasciaOraria: fascia);
+  }
+
+  Future<void> cercaSocietaGlobaleSeVuota() async {
+    if (state.societaTrovate.isNotEmpty) return;
+    state = state.copyWith(isLoading: true);
+
+    try {
+      // Recupera tutte le società/centri dal database
+      final risultati = await _societaRepo.cercaSocietaGlobale('');
+
+      final Map<String, Societa> mappaUnivoca = {
+        for (var s in risultati) s.id: s,
+      };
+
+      state = state.copyWith(
+        isLoading: false,
+        societaTrovate: mappaUnivoca.values.toList(),
+      );
+    } catch (e) {
+      state = state.copyWith(isLoading: false);
+      debugPrint("Errore caricamento iniziale società: $e");
+    }
+  }
+
+  Future<void> applicaFiltri() async {
+    state = state.copyWith(isLoading: true);
+
+    try {
+      // dataSelezionata.weekday restituisce 1 per Lunedì, 2 per Martedì... 7 per Domenica
+      final int giornoSettimana = state.dataSelezionata.weekday;
+
+      final risultati = await _societaRepo.cercaSocietaEPrezziPerSport(
+        sport: state.sportSelezionato,
+        giornoSettimana: giornoSettimana,
+      );
+
+      final List<Societa> listaSocieta = [];
+      final Map<String, double> mappaPrezzi = {};
+
+      for (var item in risultati) {
+        final Societa s = item['societa'];
+        final double p = item['prezzo'];
+        listaSocieta.add(s);
+        mappaPrezzi[s.id] = p;
+      }
+
+      state = state.copyWith(
+        isLoading: false,
+        societaTrovate: listaSocieta,
+        prezziPerSocieta: mappaPrezzi,
+      );
+    } catch (e) {
+      state = state.copyWith(isLoading: false);
+      debugPrint("Errore applicazione filtri: $e");
+    }
+  }
+
+  int getMaxGiocatori() {
+    if (state.campoSelezionato == null) return 0;
+    final sport = state.sportSelezionato;
+
+    if (sport == 'tennis_singolo') return 2;
+    if (sport == 'tennis_doppio' || sport == 'padel') return 4;
+    if (sport == 'calcio_5' || sport == 'basket') return 10;
+
+    return state.campoSelezionato!.numeroDiGiocatori;
+  }
+
+  double getPrezzoSportSelezionato() {
+    if (state.campoSelezionato == null) return 0.0;
+    final campo = state.campoSelezionato!;
+
+    if (campo.tariffeSport != null && campo.tariffeSport!.isNotEmpty) {
+      for (var t in campo.tariffeSport!) {
+        if (t.sport == state.sportSelezionato) {
+          return t.prezzo;
+        }
+      }
+    }
+    return campo.prezzo;
   }
 }

@@ -16,13 +16,16 @@ class CreazionePartitaState {
   final String? oraInizioSelezionata;
   final int ospitiExtra;
   final bool isPartitaPrivata;
+  final String sportSelezionato;
+  final String fasciaOraria;
+  final Map<String, double> prezziPerSocieta;
 
   CreazionePartitaState({
     this.isLoading = false,
     this.societaTrovate = const [],
     this.campiTrovati = const [],
     this.campoSelezionato,
-    required this.dataSelezionata,
+    DateTime? dataSelezionata, // Rimosso 'required' e reso opzionale
     this.orariDisponibili = const [],
     this.orariOccupati = const [],
     this.orariChiusi = const [],
@@ -31,7 +34,10 @@ class CreazionePartitaState {
     this.oraInizioSelezionata,
     this.ospitiExtra = 0,
     this.isPartitaPrivata = false,
-  });
+    this.sportSelezionato = 'calcio_5',
+    this.fasciaOraria = 'tutto',
+    this.prezziPerSocieta = const {},
+  }) : dataSelezionata = dataSelezionata ?? DateTime.now();
 
   CreazionePartitaState copyWith({
     bool? isLoading,
@@ -47,8 +53,11 @@ class CreazionePartitaState {
     String? oraInizioSelezionata,
     int? ospitiExtra,
     bool? isPartitaPrivata,
+    String? sportSelezionato, // <-- PARAMETRO NELLA FIRMA
+    String? fasciaOraria, // <-- PARAMETRO NELLA FIRMA
     bool clearCampo = false,
     bool clearOrario = false,
+    Map<String, double>? prezziPerSocieta,
   }) {
     return CreazionePartitaState(
       isLoading: isLoading ?? this.isLoading,
@@ -68,6 +77,12 @@ class CreazionePartitaState {
           : (oraInizioSelezionata ?? this.oraInizioSelezionata),
       ospitiExtra: ospitiExtra ?? this.ospitiExtra,
       isPartitaPrivata: isPartitaPrivata ?? this.isPartitaPrivata,
+      sportSelezionato:
+          sportSelezionato ??
+          this.sportSelezionato, // <-- VALORE REALE ASSEGNATO QUI
+      fasciaOraria:
+          fasciaOraria ?? this.fasciaOraria, // <-- VALORE REALE ASSEGNATO QUI
+      prezziPerSocieta: prezziPerSocieta ?? this.prezziPerSocieta,
     );
   }
 

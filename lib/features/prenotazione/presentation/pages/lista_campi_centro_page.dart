@@ -6,10 +6,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:app_campi/core/models/societa.dart';
 import 'package:app_campi/features/prenotazione/application/creazione_partita_controller.dart';
 import 'package:app_campi/core/theme/app_theme.dart';
-import 'package:app_campi/features/prenotazione/presentation/widget/modern_card.dart';
 import 'package:app_campi/features/prenotazione/presentation/widget/fade_slide_in.dart';
 import 'package:app_campi/features/home/application/preferiti_provider.dart';
 import 'package:app_campi/features/auth/application/auth_provider.dart';
+import 'package:app_campi/core/shared_widget/selezione_livello_dialog.dart';
 
 import 'creazione_partita_page.dart';
 
@@ -50,7 +50,7 @@ class ListaCampiCentroPage extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildHeader(context, ref),
-                Expanded(child: _buildBody(context, state, controller)),
+                Expanded(child: _buildBody(context, ref, state, controller)),
               ],
             ),
           ),
@@ -139,7 +139,12 @@ class ListaCampiCentroPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildBody(BuildContext context, dynamic state, dynamic controller) {
+  Widget _buildBody(
+    BuildContext context,
+    WidgetRef ref,
+    dynamic state,
+    dynamic controller,
+  ) {
     if (state.isLoading) {
       return const Center(
         child: CircularProgressIndicator(color: AppTheme.accent),
@@ -214,8 +219,10 @@ class ListaCampiCentroPage extends ConsumerWidget {
                 delay: index * 80,
                 child: _buildCampoCard(
                   context,
+                  ref,
                   state.campiTrovati[index],
                   controller,
+                  state.sportSelezionato,
                 ),
               );
             },
@@ -227,11 +234,52 @@ class ListaCampiCentroPage extends ConsumerWidget {
 
   Widget _buildCampoCard(
     BuildContext context,
+    WidgetRef ref,
     dynamic campo,
     dynamic controller,
+    String sportSelezionato,
   ) {
+    // 1. Estraiamo il prezzo specifico per lo sport selezionato dal campo JSONB
+    double prezzoTotale = campo.prezzo;
+    if (campo.tariffeSport != null && (campo.tariffeSport as List).isNotEmpty) {
+      for (var t in campo.tariffeSport) {
+        final String? sportNome = t is Map ? t['sport'] : t.sport;
+        final double? prezzoValore = t is Map
+            ? (t['prezzo'] as num?)?.toDouble()
+            : (t.prezzo as num?)?.toDouble();
+
+        // Se il prezzo è per lo sport del campo o per lo sport selezionato
+        if (sportNome == sportSelezionato ||
+            sportNome == campo.nomeCampo.toLowerCase()) {
+          prezzoTotale = prezzoValore ?? campo.prezzo;
+          break;
+        }
+      }
+    }
+
+    // 2. Calcoliamo il numero di giocatori esatto in base allo sport selezionato
+    int numGiocatori = campo.numeroDiGiocatori;
+    if (sportSelezionato == 'tennis_singolo') {
+      numGiocatori = 2;
+    } else if (sportSelezionato == 'tennis_doppio' ||
+        sportSelezionato == 'padel') {
+      numGiocatori = 4;
+    } else if (sportSelezionato == 'calcio_5' || sportSelezionato == 'basket') {
+      numGiocatori = 10;
+    } else if (sportSelezionato == 'calcio_7') {
+      numGiocatori = 14;
+    } else if (sportSelezionato == 'calcio_8') {
+      numGiocatori = 16;
+    } else if (sportSelezionato == 'calcio_11') {
+      numGiocatori = 22;
+    } else if (sportSelezionato == 'volley') {
+      numGiocatori = 12;
+    }
+
+    final double prezzoPerGiocatore = numGiocatori > 0
+        ? prezzoTotale / numGiocatori
+        : prezzoTotale;
     final String copertoCampo = campo.coperto ? "Al chiuso" : "All'aperto";
-    final double prezzoPerGiocatore = campo.prezzo / campo.numeroDiGiocatori;
     final bool hasImage = campo.fotoUrl != null && campo.fotoUrl!.isNotEmpty;
 
     return Padding(
@@ -249,12 +297,38 @@ class ListaCampiCentroPage extends ConsumerWidget {
             splashColor: AppTheme.accent.withOpacity(0.1),
             highlightColor: Colors.transparent,
             onTap: () {
-              controller.selezionaCampo(campo);
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const CreazionePartitaPage(),
-                ),
+              final utente = ref.read(utenteCorrenteProvider).value;
+
+              // Se l'utente è un ospite, lo fa accedere o va avanti
+              if (utente == null) {
+                controller.selezionaCampo(campo);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const CreazionePartitaPage(),
+                  ),
+                );
+                return;
+              }
+
+              // 🚀 Qui viene chiamato il nuovo Bottom Sheet!
+              verificaESelezionaLivello(
+                context: context,
+                userId: utente.id,
+                livelliSportAttuali: utente.livelliSport,
+                sport: sportSelezionato,
+                onCompletato: () {
+                  // 🚀 AGGIUNGI QUESTA RIGA: Forza l'app a ricaricare l'utente con i nuovi livelli!
+                  ref.invalidate(utenteCorrenteProvider);
+
+                  controller.selezionaCampo(campo);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const CreazionePartitaPage(),
+                    ),
+                  );
+                },
               );
             },
             child: Padding(
@@ -279,7 +353,7 @@ class ListaCampiCentroPage extends ConsumerWidget {
                               fit: BoxFit.cover,
                             )
                           : const Icon(
-                              Icons.sports_soccer,
+                              Icons.sports_tennis,
                               color: AppTheme.accent,
                               size: 36,
                             ),
@@ -309,7 +383,7 @@ class ListaCampiCentroPage extends ConsumerWidget {
                           children: [
                             _buildPill(
                               Icons.people_alt_rounded,
-                              "${campo.numeroDiGiocatori} Gioc.",
+                              "$numGiocatori Gioc.",
                             ),
                             _buildPill(
                               campo.coperto
@@ -346,7 +420,7 @@ class ListaCampiCentroPage extends ConsumerWidget {
                               ],
                             ),
                             Text(
-                              "Tot: ${campo.prezzo.toStringAsFixed(2)} €",
+                              "Tot: ${prezzoTotale.toStringAsFixed(2)} €",
                               style: const TextStyle(
                                 color: AppTheme.textSecondary,
                                 fontSize: 12,

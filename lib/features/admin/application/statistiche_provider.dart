@@ -24,11 +24,38 @@ class StatisticheState {
     );
   }
 
-  // ricavo di una singola partita
+  // ricavo di una singola partita dinamico
   double calcolaRicavoPartita(Map<String, dynamic> partita) {
     final campo = partita['campo'] ?? {};
-    final double prezzoAllOra =
-        double.tryParse(campo['prezzo']?.toString() ?? '0') ?? 0.0;
+    final String nomeCampo = (campo['nome_campo'] ?? '')
+        .toString()
+        .toLowerCase();
+    final int maxGiocatori =
+        partita['max_giocatori'] as int? ??
+        campo['numero_di_giocatori'] as int? ??
+        2;
+
+    // 🟢 1. Estrazione tariffe e prezzo base
+    final List<dynamic> tariffeRaw =
+        campo['tariffe_sport'] as List<dynamic>? ?? [];
+    double prezzoAllOra = (campo['prezzo'] as num?)?.toDouble() ?? 0.0;
+
+    // 🟢 2. Se ci sono tariffe specifiche (es. Tennis Doppio vs Singolo), applica quella esatta
+    if (tariffeRaw.isNotEmpty) {
+      final bool isDoppio = nomeCampo.contains('tennis') && maxGiocatori == 4;
+      final tariffa = tariffeRaw.firstWhere((t) {
+        final String s = (t['sport'] ?? '').toString().toLowerCase();
+        if (isDoppio) return s.contains('doppio');
+        if (nomeCampo.contains('tennis')) return s.contains('singolo');
+        return true;
+      }, orElse: () => null);
+
+      if (tariffa != null && tariffa['prezzo'] != null) {
+        prezzoAllOra = (tariffa['prezzo'] as num).toDouble();
+      }
+    }
+
+    // 🟢 3. Calcolo su durata oraria
     try {
       final inizio = partita['orario_inizio'].toString().split(':');
       final fine = partita['orario_fine'].toString().split(':');
@@ -37,7 +64,7 @@ class StatisticheState {
       final double oreTotali = (minFine - minInizio) / 60.0;
       return oreTotali * prezzoAllOra;
     } catch (e) {
-      return 0.0;
+      return prezzoAllOra;
     }
   }
 
@@ -73,8 +100,29 @@ class StatisticheState {
     }
   }
 
+  // 🟢 Considera la partita conclusa se la data/ora di fine è precedente al momento attuale
+  bool isPartitaTerminata(Map<String, dynamic> p) {
+    try {
+      final String dStr = p['data_partita']
+          .toString()
+          .split('T')[0]
+          .split(' ')[0];
+      final String fineStr =
+          p['orario_fine']?.toString().substring(0, 5) ?? '23:59';
+      final DateTime finePartita = DateTime.parse('$dStr $fineStr:00');
+
+      return DateTime.now().isAfter(finePartita);
+    } catch (e) {
+      return false;
+    }
+  }
+
   List<Map<String, dynamic>> get partiteFiltrate => partiteComplete
-      .where((p) => rientraNelPeriodo(p['data_partita'].toString()))
+      .where(
+        (p) =>
+            isPartitaTerminata(p) &&
+            rientraNelPeriodo(p['data_partita'].toString()),
+      )
       .toList();
 
   double get guadagnoTotale =>

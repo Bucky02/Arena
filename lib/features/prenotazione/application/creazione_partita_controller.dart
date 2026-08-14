@@ -286,8 +286,12 @@ class CreazionePartitaController extends Notifier<CreazionePartitaState> {
     state = state.copyWith(isLoading: true);
 
     try {
+      // 🟢 CORRETTO: Usa getMaxGiocatori() che legge 'tennis_doppio' = 4 o 'tennis_singolo' = 2!
+      final int maxGiocatoriReal = getMaxGiocatori();
+
       int ospitiFinali = state.isPartitaPrivata
-          ? (state.campoSelezionato!.numeroDiGiocatori - 1)
+          ? (maxGiocatoriReal -
+                1) // 🟢 Per il doppio fa 4 - 1 = 3 ospiti extra (Totale 4 giocatori)
           : state.ospitiExtra;
 
       final errore = await _partitaService.creaNuovaPartita(

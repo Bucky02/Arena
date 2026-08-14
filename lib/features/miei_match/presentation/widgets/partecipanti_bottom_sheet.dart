@@ -84,7 +84,7 @@ void mostraBottomSheetPartecipanti(
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
-                        "${partita.numeroGiocatoriPrenotati} / ${partita.campo.numeroDiGiocatori}",
+                        "${partita.numeroGiocatoriPrenotati} / ${partita.maxGiocatoriReali}",
                         style: const TextStyle(
                           color: AppTheme.neonCyan,
                           fontWeight: FontWeight.bold,

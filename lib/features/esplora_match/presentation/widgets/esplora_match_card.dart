@@ -19,15 +19,28 @@ class EsploraMatchCard extends ConsumerWidget {
     required this.giaIscritto,
   });
 
-  // 🟢 Helper per estrarre il livello dell'organizzatore per lo sport scelto (default 'calcio')
   String _estraiLivelloOrganizzatore(
     Utente organizzatore, {
     String sport = 'calcio',
   }) {
-    if (organizzatore.livelliSport != null &&
-        organizzatore.livelliSport!.containsKey(sport)) {
-      return organizzatore.livelliSport![sport].toString();
+    final mappa = organizzatore.livelliSport;
+    if (mappa == null || mappa.isEmpty) return "Non specificato";
+
+    // Cerca lo sport ignorando maiuscole/minuscole
+    final keyTrovata = mappa.keys.firstWhere(
+      (k) => k.toString().toLowerCase().contains(sport.toLowerCase()),
+      orElse: () => '',
+    );
+
+    if (keyTrovata.isNotEmpty && mappa[keyTrovata] != null) {
+      return mappa[keyTrovata].toString();
     }
+
+    // Fallback: se ha un solo sport salvato, mostra quello
+    if (mappa.length == 1) {
+      return mappa.values.first.toString();
+    }
+
     return "Non specificato";
   }
 
@@ -44,16 +57,24 @@ class EsploraMatchCard extends ConsumerWidget {
 
     final double distanzaKm = (raw['distanza_km'] as num?)?.toDouble() ?? 0.0;
     final int giocatoriAttuali = partita.numeroGiocatoriPrenotati;
-    final int giocatoriMassimi = partita.campo.numeroDiGiocatori;
-    final int postiRimasti = giocatoriMassimi - giocatoriAttuali;
+    // 🟢 Usa il getter reale per evitare il 3/2
+    final int giocatoriMassimi = partita.maxGiocatoriReali;
+    final int postiRimasti = (giocatoriMassimi - giocatoriAttuali).clamp(0, 99);
     final String dataOra = formattaDataOra(
       partita.dataPartita,
       partita.orarioInizio,
     );
 
-    // 🟢 Recupero livello organizzatore
+    // 🟢 Determina lo sport dal nome del campo (o fallback su 'tennis'/'calcio')
+    final String nomeCampo = partita.campo.nomeCampo.toLowerCase();
+    final String sportDellaPartita = nomeCampo.contains('tennis')
+        ? 'tennis'
+        : (nomeCampo.contains('padel') ? 'padel' : 'calcio');
+
+    // 🟢 Estrae il livello per lo sport CORRETTO della partita!
     final String livelloOrg = _estraiLivelloOrganizzatore(
       partita.organizzatore,
+      sport: sportDellaPartita,
     );
 
     return Container(

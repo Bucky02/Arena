@@ -89,6 +89,7 @@ class PartitaService {
     return (int.parse(parti[0]) * 60) + int.parse(parti[1]);
   }
 
+  // 🔴 CORRETTO: Ora usa partita.maxGiocatoriReali
   String getStatoRealePartita(Partita partita) {
     if (partita.statoPartita == 'completa' ||
         partita.statoPartita == 'annullata') {
@@ -104,17 +105,16 @@ class PartitaService {
       return 'annullata';
     }
 
+    final int maxPosti =
+        partita.maxGiocatoriReali; // 🟢 Usiamo maxGiocatoriReali
     final isPt = _isPrimeTime(partita.orarioInizio);
-    final minimoApertura = getMinimoApertura(
-      partita.campo.numeroDiGiocatori,
-      isPt,
-    );
+    final minimoApertura = getMinimoApertura(maxPosti, isPt);
 
     if (partita.numeroGiocatoriPrenotati < minimoApertura) {
       return 'annullata';
     }
 
-    if (partita.numeroGiocatoriPrenotati >= partita.campo.numeroDiGiocatori) {
+    if (partita.numeroGiocatoriPrenotati >= maxPosti) {
       return 'completa';
     }
 
@@ -154,8 +154,19 @@ class PartitaService {
         return 'Il numero di ospiti non può essere negativo.';
       }
 
+      // Durante la creazione in creaNuovaPartita:
+      int maxGiocatori = campo.numeroDiGiocatori;
+
+      // Se è Tennis ed è selezionato il doppio o ci sono 3 ospiti extra (totale 4 persone)
+      if (campo.nomeCampo.toLowerCase().contains('tennis')) {
+        if (ospitiExtra >= 3 || (isPartitaPrivata && ospitiExtra > 1)) {
+          maxGiocatori = 4;
+        } else if (ospitiExtra <= 1) {
+          maxGiocatori = 2; // Singolo fisso
+        }
+      }
+
       final int giocatoriTotaliIniziali = 1 + ospitiExtra;
-      final int maxGiocatori = campo.numeroDiGiocatori;
       final bool isPartitaGiaCompleta = giocatoriTotaliIniziali >= maxGiocatori;
 
       final inizioEsatto = _calcolaInizioEsatto(dataPartita, orarioInizio);
@@ -215,7 +226,6 @@ class PartitaService {
         return 'È già presente una partita protetta in questo orario.';
       }
 
-      //OTTIMIZZAZIONE POSTI E UNISCITI_FORZATO
       if (!isPartitaGiaCompleta && !isPartitaPrivata) {
         if (partiteEsistenti.isNotEmpty) {
           final partiteCompatibili = partiteEsistenti.where((p) {
@@ -240,7 +250,6 @@ class PartitaService {
           }
         }
 
-        // Se non c'è spazio, e siamo arrivati a 3, blocchiamo la creazione.
         if (partiteEsistenti.length >= maxPartiteNelloSlot) {
           return 'Raggiunto il limite massimo di $maxPartiteNelloSlot partite aperte in questo orario. Puoi solo prenotare il Campo Intero o unirti a una esistente. MAX_PARTITE_RAGGIUNTE';
         }
@@ -279,6 +288,7 @@ class PartitaService {
         'p_fine': orarioFine,
         'p_giocatori_iniziali': giocatoriTotaliIniziali,
         'p_is_public': !isPartitaPrivata,
+        'p_max_giocatori_custom': maxGiocatori,
       });
 
       if (result['status'] == 'error') return result['message'];
@@ -311,6 +321,7 @@ class PartitaService {
     }
   }
 
+  // 🔴 CORRETTO: Ora usa partita.maxGiocatoriReali
   Future<String?> uniscitiAPartita({
     required Partita partita,
     required Utente nuovoGiocatore,
@@ -342,10 +353,12 @@ class PartitaService {
         return 'Iscrizioni chiuse: manca meno di 1 ora all\'inizio.';
       }
 
+      final int maxPosti =
+          partita.maxGiocatoriReali; // 🟢 Usiamo maxGiocatoriReali
       final int nuovoTotale =
           partita.numeroGiocatoriPrenotati + 1 + ospitiExtra;
 
-      if (nuovoTotale > partita.campo.numeroDiGiocatori) {
+      if (nuovoTotale > maxPosti) {
         return 'Posti insufficienti per te e i tuoi ospiti.';
       }
 
@@ -359,7 +372,7 @@ class PartitaService {
         inizioEsatto.subtract(const Duration(hours: orePerditaProtezioneFissa)),
       );
 
-      if (nuovoTotale >= partita.campo.numeroDiGiocatori) {
+      if (nuovoTotale >= maxPosti) {
         await _repository.completaPartitaEAnnullaSlotRpc(
           idPartita: partita.id,
           nuovoTotale: nuovoTotale,
@@ -369,9 +382,7 @@ class PartitaService {
         );
       } else {
         final String nuovoStato =
-            (nuovoTotale >=
-                    getSogliaProtezione(partita.campo.numeroDiGiocatori) &&
-                !isMenoDi24h)
+            (nuovoTotale >= getSogliaProtezione(maxPosti) && !isMenoDi24h)
             ? 'aperta_protetta'
             : 'aperta_a_rischio';
 
@@ -409,6 +420,8 @@ class PartitaService {
         return 'Abbandono bloccato: mancano meno di $oreLimiteScadenza ore all\'inizio.';
       }
 
+      final int maxGiocatoriReali = partita.maxGiocatoriReali;
+
       final int ospitiExtra = await _repository.getOspitiExtraGiocatore(
         partita.id,
         giocatoreDaRimuovere.id,
@@ -420,13 +433,10 @@ class PartitaService {
       );
 
       final int nuovoTotale =
-          partita.numeroGiocatoriPrenotati - (1 + ospitiExtra);
+          (partita.numeroGiocatoriPrenotati - (1 + ospitiExtra)).clamp(0, 99);
 
       final isPt = _isPrimeTime(partita.orarioInizio);
-      final minimoApertura = getMinimoApertura(
-        partita.campo.numeroDiGiocatori,
-        isPt,
-      );
+      final minimoApertura = getMinimoApertura(maxGiocatoriReali, isPt);
 
       if (nuovoTotale <= 0 || nuovoTotale < minimoApertura) {
         await _repository.aggiornaGiocatoriEStato(
@@ -440,9 +450,9 @@ class PartitaService {
             const Duration(hours: orePerditaProtezioneFissa),
           ),
         );
+
         final String stato =
-            (nuovoTotale >=
-                    getSogliaProtezione(partita.campo.numeroDiGiocatori) &&
+            (nuovoTotale >= getSogliaProtezione(maxGiocatoriReali) &&
                 !isMenoDi24h)
             ? 'aperta_protetta'
             : 'aperta_a_rischio';
@@ -456,7 +466,7 @@ class PartitaService {
 
       return null;
     } catch (e) {
-      return 'Errore abbandono.';
+      return 'Errore durante l\'abbandono.';
     }
   }
 

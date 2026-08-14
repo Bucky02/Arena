@@ -46,7 +46,7 @@ class PartitaRepository {
           .from('partite')
           .select('''
             *,
-            campo:campi(*, societa(*)), 
+            campo:campi(*, societa(*)),
             organizzatore:utenti!partite_id_organizzatore_fkey(*),
             giocatori_partita(
               ospiti_extra,
@@ -167,8 +167,10 @@ class PartitaRepository {
         params: parametri,
       );
 
-      final risultato = Map<String, dynamic>.from(response);
-      return risultato;
+      if (response is Map) {
+        return Map<String, dynamic>.from(response);
+      }
+      return {'id': response.toString(), 'status': 'success'};
     } on PostgrestException catch (e) {
       throw Exception('Errore database: ${e.message}');
     } catch (e) {
@@ -288,7 +290,6 @@ class PartitaRepository {
     }
   }
 
-  // metodo che annulla solo le partite "a rischio" quando nasce una protetta
   Future<void> annullaPartiteARischioNelloSlot({
     required String idCampo,
     required DateTime dataPartita,
@@ -329,6 +330,7 @@ class PartitaRepository {
     }
   }
 
+  // 🟢 CORRETTO: Includiamo tutti i campi necessari (* in campi e tariffe_sport)
   Future<List<Map<String, dynamic>>> fetchPrenotazioniGestore(
     String idSocieta,
   ) async {
@@ -348,7 +350,7 @@ class PartitaRepository {
           .from('partite')
           .select('''
             *,
-            campo:campi(nome_campo),
+            campo:campi(*),
             organizzatore:utenti!partite_id_organizzatore_fkey(
               nome, cognome, email, telefono
             )
@@ -434,7 +436,7 @@ class PartitaRepository {
 
       final response = await _supabase
           .from('partite')
-          .select('*, campo:campi(nome_campo, prezzo)')
+          .select('*, campo:campi(*)')
           .inFilter('id_campo', idCampi)
           .eq('stato_partita', 'completa');
 

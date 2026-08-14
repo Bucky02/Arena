@@ -21,10 +21,11 @@ class EsploraMatchPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final matchInZonaAsync = ref.watch(matchInZonaProvider);
     final filtro = ref.watch(filtroDistanzaProvider);
+    final sportSelezionato = ref.watch(filtroSportProvider);
     final Utente? utenteLoggato = ref.watch(utenteCorrenteProvider).value;
 
     return Scaffold(
-      backgroundColor: AppTheme.darkBg,
+      backgroundColor: const Color.fromARGB(255, 1, 5, 4),
       body: Stack(
         children: [
           Positioned(
@@ -81,6 +82,42 @@ class EsploraMatchPage extends ConsumerWidget {
 
                 const FiltroDistanzaChips(),
                 const SizedBox(height: 8),
+
+                // 🟢 NUOVO FILTRO CHIPS PER SPORT
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: ['Tutti', 'Tennis', 'Padel', 'Calcio', 'Basket']
+                        .map((sport) {
+                          final isSelected =
+                              ref.watch(filtroSportProvider) == sport;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              label: Text(sport),
+                              selected: isSelected,
+                              onSelected: (_) {
+                                ref.read(filtroSportProvider.notifier).state =
+                                    sport;
+                              },
+                              selectedColor: AppTheme.accent,
+                              backgroundColor: AppTheme.cardBg,
+                              labelStyle: TextStyle(
+                                color: isSelected
+                                    ? AppTheme.darkBg
+                                    : Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          );
+                        })
+                        .toList(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const GpsBanner(),
                 const GpsBanner(),
 
                 Expanded(
@@ -99,11 +136,20 @@ class EsploraMatchPage extends ConsumerWidget {
                       ),
                     ),
                     data: (partite) {
-                      final partiteDaEsplorare = filtraEOrdina(
+                      var partiteDaEsplorare = filtraEOrdina(
                         partite,
                         utenteLoggato,
                         filtro,
                       );
+                      if (sportSelezionato != 'Tutti') {
+                        partiteDaEsplorare = partiteDaEsplorare.where((item) {
+                          final nomeCampo = item.partita.campo.nomeCampo
+                              .toLowerCase();
+                          return nomeCampo.contains(
+                            sportSelezionato.toLowerCase(),
+                          );
+                        }).toList();
+                      }
 
                       if (partiteDaEsplorare.isEmpty) {
                         return const EsploraMatchEmptyState();

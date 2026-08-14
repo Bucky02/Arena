@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 import 'package:app_campi/core/models/partita.dart';
 import 'package:app_campi/features/miei_match/application/partite_utente_provider.dart';
 import 'package:app_campi/core/theme/app_theme.dart';
-import 'package:app_campi/core/theme/app_constants.dart';
 import 'package:app_campi/features/miei_match/presentation/widgets/live_timer_widget.dart';
 import 'package:app_campi/core/shared_widget/status_badge.dart';
 import 'package:app_campi/core/shared_widget/urgenza_badge.dart';
@@ -50,7 +49,8 @@ class PremiumMatchCard extends ConsumerWidget {
     }
 
     final int giocatoriAttuali = partita.numeroGiocatoriPrenotati;
-    final int giocatoriMassimi = partita.campo.numeroDiGiocatori;
+    // 🔴 Usa il calcolo dinamico dei giocatori massimi!
+    final int giocatoriMassimi = partita.maxGiocatoriReali;
     final int postiRimasti = (giocatoriMassimi - giocatoriAttuali).clamp(
       0,
       giocatoriMassimi,

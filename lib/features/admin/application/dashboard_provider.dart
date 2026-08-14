@@ -318,6 +318,8 @@ class DashboardNotifier extends Notifier<DashboardState> {
             startTime: start,
             endTime: end,
             subject: '$nomeOrg\n⚽ $nomeCampo',
+            notes:
+                idPartita, // 🟢 Memorizziamo l'ID esatto della partita per il match immediato
             color: AppTheme.neonOrange,
             isAllDay: false,
           ),

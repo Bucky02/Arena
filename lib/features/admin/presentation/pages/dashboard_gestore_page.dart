@@ -67,14 +67,23 @@ class _DashboardGestoreState extends ConsumerState<DashboardGestore> {
 
   void _gestisciClickCalendario(CalendarTapDetails details) {
     final datiPartiteRaw = ref.read(dashboardProvider).datiPartiteRaw;
-    if (details.targetElement == CalendarElement.appointment) {
+    if (details.targetElement == CalendarElement.appointment &&
+        details.appointments != null &&
+        details.appointments!.isNotEmpty) {
       final Appointment app = details.appointments!.first;
-      if (app.subject == '⛔ CHIUSO' || app.subject == '⛔ GIORNO DI CHIUSURA')
+
+      if (app.subject == '⛔ CHIUSO' || app.subject == '⛔ GIORNO DI CHIUSURA') {
         return;
+      }
+
+      // 🟢 Cerca l'ID sia da app.id che da app.notes
+      final String idCercato = (app.notes ?? app.id ?? '').toString();
+
       final partitaRaw = datiPartiteRaw.firstWhere(
-        (p) => p['id'].toString() == app.id.toString(),
+        (p) => p['id'].toString() == idCercato,
         orElse: () => <String, dynamic>{},
       );
+
       if (partitaRaw.isNotEmpty) {
         showDialog(
           context: context,

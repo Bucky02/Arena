@@ -9,6 +9,7 @@ import '../../application/esplora_match_filter.dart';
 import '../../application/join_match_controller.dart';
 import 'package:app_campi/core/services/location_provider.dart';
 import 'auth_bottom_sheet.dart';
+import 'package:app_campi/features/miei_match/application/partite_utente_provider.dart';
 
 void mostraDettagliEUnisciti(
   BuildContext context,
@@ -57,7 +58,7 @@ class _JoinMatchSheetContent extends StatelessWidget {
   });
 
   int get _postiDisponibili =>
-      partita.campo.numeroDiGiocatori - partita.numeroGiocatoriPrenotati;
+      partita.maxGiocatoriReali - partita.numeroGiocatoriPrenotati;
 
   @override
   Widget build(BuildContext context) {
@@ -408,6 +409,7 @@ class _IscrizioneConOspitiSectionState
         ),
       );
       ref.invalidate(matchInZonaProvider);
+      ref.invalidate(partiteUtenteProvider(widget.utenteLoggato.id));
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(errore), backgroundColor: AppTheme.statoErrore),

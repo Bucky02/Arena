@@ -182,72 +182,120 @@ class _RiepilogoCampoCard extends StatelessWidget {
     final campo = state.campoSelezionato!;
     final hasFoto = campo.fotoUrl != null && campo.fotoUrl!.isNotEmpty;
 
+    // 💶 Calcoliamo prezzo e giocatori in base allo sport
+    final double prezzoTotale = controller.getPrezzoSportSelezionato();
+    final int maxGiocatori = controller.getMaxGiocatori();
+    final double quotaPersona = maxGiocatori > 0
+        ? prezzoTotale / maxGiocatori
+        : prezzoTotale;
+
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppTheme.cardBg,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: AppTheme.cardBorder),
       ),
-      child: Row(
+      child: Column(
         children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              color: AppTheme.darkBg,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: hasFoto
-                  ? CachedNetworkImage(
-                      imageUrl: campo.fotoUrl!,
-                      fit: BoxFit.cover,
-                    )
-                  : const Icon(
-                      Icons.sports_soccer,
-                      color: AppTheme.accent,
-                      size: 30,
+          Row(
+            children: [
+              Container(
+                width: 55,
+                height: 55,
+                decoration: BoxDecoration(
+                  color: AppTheme.darkBg,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: hasFoto
+                      ? CachedNetworkImage(
+                          imageUrl: campo.fotoUrl!,
+                          fit: BoxFit.cover,
+                        )
+                      : const Icon(
+                          Icons.sports_tennis,
+                          color: AppTheme.accent,
+                          size: 28,
+                        ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "STAI PRENOTANDO",
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 10,
+                        letterSpacing: 1.5,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  "STAI PRENOTANDO",
-                  style: TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 10,
-                    letterSpacing: 1.5,
-                    fontWeight: FontWeight.bold,
-                  ),
+                    const SizedBox(height: 2),
+                    Text(
+                      campo.nomeCampo,
+                      style: const TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  campo.nomeCampo,
-                  style: const TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
+              ),
+              IconButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  controller.selezionaCampo(null);
+                },
+                icon: const Icon(
+                  Icons.edit_square,
+                  color: AppTheme.textSecondary,
+                  size: 20,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          IconButton(
-            onPressed: () {
-              Navigator.pop(context);
-              controller.selezionaCampo(null);
-            },
-            icon: const Icon(
-              Icons.edit_square,
-              color: AppTheme.textSecondary,
-              size: 20,
-            ),
+
+          const SizedBox(height: 12),
+          const Divider(color: Colors.white10, height: 1),
+          const SizedBox(height: 12),
+
+          // 🏷️ RIGA PREZZI REALI
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.person_outline,
+                    size: 16,
+                    color: AppTheme.accent,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    "Quota a persona: ${quotaPersona.toStringAsFixed(2)} €",
+                    style: const TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                "Totale: ${prezzoTotale.toStringAsFixed(2)} €",
+                style: const TextStyle(
+                  color: AppTheme.accent,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 14,
+                ),
+              ),
+            ],
           ),
         ],
       ),

@@ -16,3 +16,16 @@ final filtroDistanzaProvider =
     NotifierProvider<FiltroDistanzaNotifier, FiltroDistanza>(() {
       return FiltroDistanzaNotifier();
     });
+
+class FiltroSportNotifier extends Notifier<String> {
+  @override
+  String build() => 'Tutti';
+
+  void impostaSport(String nuovoSport) {
+    state = nuovoSport;
+  }
+}
+
+final filtroSportProvider = NotifierProvider<FiltroSportNotifier, String>(() {
+  return FiltroSportNotifier();
+});
